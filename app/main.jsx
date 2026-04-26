@@ -63,12 +63,12 @@ async function fetchMeesmanNav() {
 
 const T212_PROXY = 'https://corsproxy.io/?url=';
 
-// authHeader: combineer keyId + secret als beide aanwezig, anders alleen secret
+// T212 gebruikt alleen de Secret Key in de Authorization header
 function buildT212Auth(keyId, secret) {
-  const k = (keyId || '').trim();
+  // Gebruik altijd alleen de Secret Key — nooit combineren
   const s = (secret || '').trim();
-  if (k && s) return `${k}:${s}`;
-  return s || k;
+  const k = (keyId || '').trim();
+  return s || k; // secret heeft prioriteit, keyId als fallback
 }
 
 async function fetchT212Orders(authHeader, cursor) {
@@ -407,23 +407,12 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
           <SectionLabel style={{ marginBottom:10 }}>Trading 212 import</SectionLabel>
           <div style={{ display:'grid', gap:8 }}>
 
-            {/* API Key (identifier — optioneel) */}
-            <label style={{ fontSize:12 }}>
-              <div style={{ color:'var(--fg-muted)', marginBottom:4 }}>
-                API Key <span style={{ color:'var(--fg-dim)', fontWeight:400 }}>(optioneel)</span>
-              </div>
-              <input type="text" value={tweaks.t212KeyId || ''}
-                onChange={e => setTweaks(tw => ({...tw, t212KeyId: e.target.value}))}
-                placeholder="API Key van T212..."
-                style={{ ...inputStyle, width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'var(--ff-mono)' }} />
-            </label>
-
             {/* Secret Key */}
             <label style={{ fontSize:12 }}>
-              <div style={{ color:'var(--fg-muted)', marginBottom:4 }}>Secret Key</div>
+              <div style={{ color:'var(--fg-muted)', marginBottom:4 }}>API Key <span style={{ color:'var(--fg-dim)', fontWeight:400 }}>(T212 → Instellingen → API)</span></div>
               <input type="password" value={tweaks.t212ApiKey || ''}
                 onChange={e => setTweaks(tw => ({...tw, t212ApiKey: e.target.value}))}
-                placeholder="Secret Key van T212..."
+                placeholder="Plak je T212 API Key..."
                 style={{ ...inputStyle, width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'var(--ff-mono)' }} />
             </label>
 
@@ -445,7 +434,7 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
               </div>
             )}
             <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.5 }}>
-              Vul in wat T212 toont onder Instellingen → API. Als je alleen een Secret Key ziet, laat API Key leeg. Duplicaten worden automatisch overgeslagen.
+              Genereer een key via T212 app → Instellingen → API. Kopieer de volledige key en plak hem hier. Duplicaten worden automatisch overgeslagen.
             </div>
           </div>
         </div>
