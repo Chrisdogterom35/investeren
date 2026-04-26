@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<title>Investeringen — Dashboard</title>
+<meta name="viewport" content="width=1440" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--ff-sans, 'Inter', system-ui, sans-serif);
+    background: var(--bg, #f7f6f3);
+    color: var(--fg, #111);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv11";
+    transition: background .3s ease, color .3s ease;
+  }
+  button { font-family: inherit; }
+  input, select, textarea { font-family: inherit; color: inherit; }
+
+  /* ========== THEME: MINIMAL ========== */
+  .theme-minimal {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --surface-2: #faf9f6;
+    --border: #e8e5dd;
+    --border-strong: #d4d0c4;
+    --fg: #14130f;
+    --fg-muted: #6b6860;
+    --fg-dim: #a09c90;
+    --accent: oklch(52% 0.13 260);
+    --positive: oklch(55% 0.13 155);
+    --negative: oklch(58% 0.18 25);
+    --ff-sans: 'Inter', system-ui, sans-serif;
+    --ff-display: 'Instrument Serif', 'Times New Roman', serif;
+    --ff-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --radius: 10px;
+    --radius-lg: 16px;
+    --shadow: 0 1px 0 rgba(20,19,15,.04), 0 1px 2px rgba(20,19,15,.03);
+  }
+
+  /* ========== THEME: PREMIUM DARK ========== */
+  .theme-dark {
+    --bg: #0b0c0a;
+    --surface: #141613;
+    --surface-2: #1b1d19;
+    --border: #262823;
+    --border-strong: #353831;
+    --fg: #f1efe7;
+    --fg-muted: #9a978b;
+    --fg-dim: #605e54;
+    --accent: oklch(78% 0.14 85);
+    --positive: oklch(72% 0.17 150);
+    --negative: oklch(68% 0.20 28);
+    --ff-sans: 'Inter', system-ui, sans-serif;
+    --ff-display: 'Fraunces', 'Times New Roman', serif;
+    --ff-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --radius: 12px;
+    --radius-lg: 18px;
+    --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 8px 24px rgba(0,0,0,.35);
+  }
+
+  /* ========== THEME: WARM ========== */
+  .theme-warm {
+    --bg: #f1e9dc;
+    --surface: #f8f2e6;
+    --surface-2: #ebe1cf;
+    --border: #d8ccb4;
+    --border-strong: #b8a988;
+    --fg: #2e241a;
+    --fg-muted: #6f6250;
+    --fg-dim: #a59780;
+    --accent: oklch(48% 0.11 50);
+    --positive: oklch(48% 0.10 145);
+    --negative: oklch(52% 0.15 30);
+    --ff-sans: 'Fraunces', Georgia, serif;
+    --ff-display: 'Fraunces', Georgia, serif;
+    --ff-mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --radius: 6px;
+    --radius-lg: 10px;
+    --shadow: 0 1px 0 rgba(46,36,26,.04);
+  }
+
+  /* ========== THEME: BLOOMBERG ========== */
+  .theme-terminal {
+    --bg: #000000;
+    --surface: #0a0a0a;
+    --surface-2: #111111;
+    --border: #2a2a2a;
+    --border-strong: #3a3a3a;
+    --fg: #ffb000;
+    --fg-muted: #c48b00;
+    --fg-dim: #7a5600;
+    --accent: #ff8a00;
+    --positive: #00e676;
+    --negative: #ff4040;
+    --ff-sans: 'JetBrains Mono', ui-monospace, monospace;
+    --ff-display: 'JetBrains Mono', ui-monospace, monospace;
+    --ff-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --radius: 0px;
+    --radius-lg: 0px;
+    --shadow: none;
+  }
+  .theme-terminal body, .theme-terminal { letter-spacing: 0.01em; }
+
+  /* ========== THEME: NORD ========== */
+  .theme-nord {
+    --bg: #2e3440;
+    --surface: #3b4252;
+    --surface-2: #434c5e;
+    --border: rgba(76,86,106,0.9);
+    --border-strong: #616e88;
+    --fg: #eceff4;
+    --fg-muted: #adb8cc;
+    --fg-dim: #677080;
+    --accent: #88c0d0;
+    --positive: #a3be8c;
+    --negative: #bf616a;
+    --ff-sans: 'Inter', system-ui, sans-serif;
+    --ff-display: 'Inter', system-ui, sans-serif;
+    --ff-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --radius: 8px;
+    --radius-lg: 12px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.4);
+  }
+
+  /* ========== THEME: SOLARIZED ========== */
+  .theme-solarized {
+    --bg: #fdf6e3;
+    --surface: #eee8d5;
+    --surface-2: #e5dfcc;
+    --border: #cec8b4;
+    --border-strong: #b5af9c;
+    --fg: #586e75;
+    --fg-muted: #839496;
+    --fg-dim: #a0aaab;
+    --accent: #268bd2;
+    --positive: #859900;
+    --negative: #dc322f;
+    --ff-sans: 'Inter', system-ui, sans-serif;
+    --ff-display: 'Fraunces', Georgia, serif;
+    --ff-mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --radius: 8px;
+    --radius-lg: 14px;
+    --shadow: 0 1px 0 rgba(88,110,117,.05), 0 2px 6px rgba(88,110,117,.07);
+  }
+
+  /* ========== THEME: NEBULA ========== */
+  .theme-nebula {
+    --bg: #0b0814;
+    --surface: #140e22;
+    --surface-2: #1c1530;
+    --border: #291d40;
+    --border-strong: #3d2b5e;
+    --fg: #e8dff8;
+    --fg-muted: #a08bbf;
+    --fg-dim: #604d80;
+    --accent: oklch(72% 0.22 310);
+    --positive: oklch(72% 0.17 155);
+    --negative: oklch(68% 0.22 28);
+    --ff-sans: 'Inter', system-ui, sans-serif;
+    --ff-display: 'Fraunces', 'Times New Roman', serif;
+    --ff-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --radius: 14px;
+    --radius-lg: 22px;
+    --shadow: 0 4px 20px rgba(80,0,160,0.3), inset 0 0 0 1px rgba(160,100,255,0.06);
+  }
+
+  /* Scrollbars */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+  #root { min-height: 100vh; }
+
+  .mono { font-family: var(--ff-mono); font-variant-numeric: tabular-nums; }
+  .serif { font-family: var(--ff-display); }
+  .tnum { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+  // ===== TWEAK DEFAULTS (persisted via edit mode) =====
+  window.TWEAKS = /*EDITMODE-BEGIN*/{
+    "theme": "minimal",
+    "goldSpotEurPerGram": 131.49,
+    "silverSpotEurPerOunce": 67.9,
+    "btcSpotEur": 88000,
+    "ethSpotEur": 1700,
+    "paxgSpotEur": 3900,
+    "meesmanNavEur": 97.55,
+    "t212KeyId": "",
+    "t212ApiKey": "",
+    "meesmanNavHistory": []
+  }/*EDITMODE-END*/;
+</script>
+
+<script type="text/babel" src="app/data.jsx"></script>
+<script type="text/babel" src="app/ui.jsx"></script>
+<script type="text/babel" src="app/charts.jsx"></script>
+<script type="text/babel" src="app/modals.jsx"></script>
+<script type="text/babel" src="app/dashboard.jsx"></script>
+<script type="text/babel" src="app/tabs.jsx"></script>
+<script type="text/babel" src="app/main.jsx"></script>
+</body>
+</html>
