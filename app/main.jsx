@@ -196,7 +196,13 @@ function App() {
         state.transactions.filter(t => t._t212Id).map(t => t._t212Id)
       );
       const newTxs = items
-        .filter(o => (o.status === 'FILLED' || !o.status) && !existingIds.has(String(o.id || '')))
+        .filter(o => {
+          if (existingIds.has(String(o.id || ''))) return false;
+          if (o.status && o.status !== 'FILLED') return false; // sla niet-gevulde orders over
+          const qty = +(o.filledQuantity || o.orderedQuantity || 0);
+          const price = +(o.filledPrice || 0) || (qty > 0 ? (+(o.filledValue||0) / qty) : 0);
+          return qty > 0 && price > 0; // sla lege orders over
+        })
         .map(mapT212Order);
       if (newTxs.length > 0) {
         setState(s => ({ ...s, transactions: [...s.transactions, ...newTxs] }));
@@ -218,6 +224,13 @@ function App() {
     localStorage.removeItem('investeringen-v3');
     setState(loadState());
   }, []);
+
+  const deleteT212Txs = React.useCallback(() => {
+    const count = state.transactions.filter(t => t.party === 'trading212').length;
+    if (!confirm(`${count} Trading 212 transacties verwijderen?`)) return;
+    setState(s => ({ ...s, transactions: s.transactions.filter(t => t.party !== 'trading212') }));
+    setT212Status({ loading: false, error: null, imported: 0, done: false });
+  }, [state.transactions]);
 
   // ── Export: download state als JSON-bestand ──
   const exportData = React.useCallback(() => {
@@ -342,7 +355,7 @@ function App() {
           onReset={resetData}
           onExport={exportData} onImport={importData} importMsg={importMsg}
           spotStatus={spotStatus} onRefreshSpot={refreshSpot}
-          t212Status={t212Status} onImportT212={importT212}
+          t212Status={t212Status} onImportT212={importT212} onDeleteT212={deleteT212Txs}
           onClose={() => setTweaksOpen(false)}
         />
       )}
@@ -352,7 +365,7 @@ function App() {
 
 function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
                        spotStatus, onRefreshSpot,
-                       t212Status, onImportT212,
+                       t212Status, onImportT212, onDeleteT212,
                        onExport, onImport, importMsg }) {
 
   const fileRef = React.useRef(null);
@@ -457,6 +470,12 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
             <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.5 }}>
               Genereer een key via T212 app → Instellingen → API. Kopieer de volledige key en plak hem hier. Duplicaten worden automatisch overgeslagen.
             </div>
+            <button onClick={onDeleteT212}
+              style={{ padding:'7px 12px', fontSize:11, background:'transparent',
+                border:'1px solid var(--border)', borderRadius:'var(--radius)',
+                color:'var(--negative)', cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
+              ✕ Verwijder alle T212 transacties
+            </button>
           </div>
         </div>
 
