@@ -71,10 +71,11 @@ function buildT212Auth(keyId, secret) {
   return s || k; // secret heeft prioriteit, keyId als fallback
 }
 
-async function fetchT212Orders(authHeader, cursor) {
+async function fetchT212Orders(authHeader, cursor, mode = 'live') {
+  const host = mode === 'demo' ? 'demo.trading212.com' : 'live.trading212.com';
   const base = cursor
-    ? `https://live.trading212.com/api/v0/equity/history/orders?cursor=${encodeURIComponent(cursor)}&limit=50`
-    : 'https://live.trading212.com/api/v0/equity/history/orders?limit=50';
+    ? `https://${host}/api/v0/equity/history/orders?cursor=${encodeURIComponent(cursor)}&limit=50`
+    : `https://${host}/api/v0/equity/history/orders?limit=50`;
   const url = T212_PROXY + encodeURIComponent(base);
   let res;
   try {
@@ -82,9 +83,15 @@ async function fetchT212Orders(authHeader, cursor) {
   } catch (e) {
     throw new Error('Netwerkfout — controleer je verbinding of probeer opnieuw');
   }
-  if (res.status === 401) throw new Error('Niet geautoriseerd (401) — controleer je API-sleutel(s)');
+  if (res.status === 401) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`401 — ${body || 'ongeldige sleutel'}`);
+  }
   if (res.status === 403) throw new Error('Geen toegang (403) — sleutel heeft mogelijk onvoldoende rechten');
-  if (!res.ok) throw new Error(`T212 API fout: HTTP ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`T212 fout HTTP ${res.status}: ${body || 'onbekend'}`);
+  }
   return await res.json();
 }
 
@@ -183,7 +190,7 @@ function App() {
     if (!auth) return;
     setT212Status({ loading: true, error: null, imported: 0, done: false });
     try {
-      const data = await fetchT212Orders(auth);
+      const data = await fetchT212Orders(auth, null, tweaks.t212Mode || 'live');
       const items = Array.isArray(data) ? data : (data.items || []);
       const existingIds = new Set(
         state.transactions.filter(t => t._t212Id).map(t => t._t212Id)
@@ -407,7 +414,21 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
           <SectionLabel style={{ marginBottom:10 }}>Trading 212 import</SectionLabel>
           <div style={{ display:'grid', gap:8 }}>
 
-            {/* Secret Key */}
+            {/* Live / Demo toggle */}
+            <div style={{ display:'flex', gap:6 }}>
+              {['live','demo'].map(m => (
+                <button key={m} onClick={() => setTweaks(tw => ({...tw, t212Mode: m}))} type="button"
+                  style={{ flex:1, padding:'7px', fontSize:12,
+                    background: (tweaks.t212Mode||'live')===m ? 'var(--fg)' : 'var(--surface-2)',
+                    color:      (tweaks.t212Mode||'live')===m ? 'var(--bg)' : 'var(--fg)',
+                    border:'1px solid '+((tweaks.t212Mode||'live')===m ? 'var(--fg)' : 'var(--border)'),
+                    borderRadius:'var(--radius)', cursor:'pointer', fontFamily:'inherit', fontWeight:500 }}>
+                  {m === 'live' ? '🟢 Live' : '🧪 Paper'}
+                </button>
+              ))}
+            </div>
+
+            {/* API Key */}
             <label style={{ fontSize:12 }}>
               <div style={{ color:'var(--fg-muted)', marginBottom:4 }}>API Key <span style={{ color:'var(--fg-dim)', fontWeight:400 }}>(T212 → Instellingen → API)</span></div>
               <input type="password" value={tweaks.t212ApiKey || ''}
