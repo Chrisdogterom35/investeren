@@ -49,16 +49,36 @@ async function fetchCryptoPrices() {
 async function fetchMeesmanNav() {
   const end   = new Date().toISOString().slice(0, 10);
   const start = new Date(Date.now() - 730 * 86400000).toISOString().slice(0, 10);
-  const url = `https://tools.morningstar.co.uk/api/rest.svc/timeseries_price/t92wz0sj7c?id=0P0001IJJX%24%242%24%241&currencyId=EUR&idtype=Morningstar&frequency=daily&startDate=${start}&endDate=${end}&outputType=COMPACTJSON`;
-  const res = await fetch(url).then(r => r.json());
-  const security = res?.TimeSeries?.Security?.[0];
-  const history  = security?.HistoryDetail || [];
-  if (!history.length) throw new Error('Geen NAV-data ontvangen');
-  const navHistory = history
-    .map(h => ({ date: h.EndDate.slice(0, 10), nav: +h.Value }))
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const latest = navHistory[navHistory.length - 1];
-  return { meesmanNavEur: latest.nav, meesmanNavHistory: navHistory };
+  const id    = '0P0001IJJX%24%242%24%241';
+  const qs    = `id=${id}&currencyId=EUR&idtype=Morningstar&frequency=daily&startDate=${start}&endDate=${end}&outputType=COMPACTJSON`;
+
+  // Probeer meerdere Morningstar-regio's via de CORS proxy
+  const hosts = [
+    'tools.morningstar.nl',
+    'tools.morningstar.be',
+    'lt.morningstar.com',
+    'tools.morningstar.co.uk',
+  ];
+  const token = 't92wz0sj7c';
+
+  for (const host of hosts) {
+    try {
+      const endpoint = `https://${host}/api/rest.svc/timeseries_price/${token}?${qs}`;
+      const proxied  = T212_PROXY + encodeURIComponent(endpoint);
+      const res  = await fetch(proxied).then(r => r.json());
+      const security = res?.TimeSeries?.Security?.[0];
+      const history  = security?.HistoryDetail || [];
+      if (!history.length) continue; // probeer volgende host
+      const navHistory = history
+        .map(h => ({ date: h.EndDate.slice(0, 10), nav: +h.Value }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const latest = navHistory[navHistory.length - 1];
+      return { meesmanNavEur: latest.nav, meesmanNavHistory: navHistory };
+    } catch (_) {
+      // host mislukt — probeer volgende
+    }
+  }
+  throw new Error('Geen NAV-data ontvangen (alle Morningstar-endpoints geprobeerd)');
 }
 
 const T212_PROXY = 'https://corsproxy.io/?url=';
