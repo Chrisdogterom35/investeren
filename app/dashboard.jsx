@@ -1,12 +1,24 @@
 // Main dashboard with customizable widget system
 
+// Metric options for party tiles
+const TILE_METRICS = [
+  { key: 'pnl_eur',   label: 'Winst €',         short: '€' },
+  { key: 'pnl_pct',   label: 'Winst %',          short: '%' },
+  { key: 'ytd_pct',   label: 'YTD %',            short: 'YTD' },
+  { key: 'value',     label: 'Huidige waarde',   short: 'val' },
+  { key: 'invested',  label: 'Ingelegd',         short: 'inleg' },
+  { key: 'share',     label: 'Aandeel portfolio', short: 'share' },
+];
+
 function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSpot }) {
-  const [modalOpen, setModalOpen]       = React.useState(false);
-  const [modalPreset, setModalPreset]   = React.useState(null);
-  const [editingTx, setEditingTx]       = React.useState(null);
-  const [detailPartyId, setDetailPartyId] = React.useState(null);
-  const [filterCategory, setFilterCategory] = React.useState('all');
-  const [editMode, setEditMode]         = React.useState(false);
+  const [modalOpen, setModalOpen]               = React.useState(false);
+  const [modalPreset, setModalPreset]           = React.useState(null);
+  const [editingTx, setEditingTx]               = React.useState(null);
+  const [detailPartyId, setDetailPartyId]       = React.useState(null);
+  const [filterCategory, setFilterCategory]     = React.useState('all');
+  const [editMode, setEditMode]                 = React.useState(false);
+  const [addPartyOpen, setAddPartyOpen]         = React.useState(false);
+  const [editParty, setEditParty]               = React.useState(null);
 
   const spots = React.useMemo(() => ({
     goldSpotEurPerGram:    tweaks.goldSpotEurPerGram,
@@ -20,24 +32,41 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
        tweaks.btcSpotEur, tweaks.ethSpotEur, tweaks.paxgSpotEur,
        tweaks.meesmanNavEur, tweaks.meesmanNavHistory]);
 
-  const summaries = React.useMemo(
-    () => PARTIES.map(p => summarizeParty(p, state.transactions, spots)),
-    [state.transactions, spots]
+  // Merge built-in + custom parties
+  const allParties = React.useMemo(
+    () => [...PARTIES, ...(state.customParties || [])],
+    [state.customParties]
   );
+
+  const summaries = React.useMemo(
+    () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
+    [state.transactions, spots, allParties]
+  );
+
+  const hiddenParties  = state.hiddenParties  || [];
+  const tileMetrics    = state.tileMetrics    || {};
+
+  const setHiddenParties = React.useCallback(ids => {
+    setState(s => ({ ...s, hiddenParties: ids }));
+  }, [setState]);
+
+  const setTileMetric = React.useCallback((partyId, metric) => {
+    setState(s => ({ ...s, tileMetrics: { ...(s.tileMetrics || {}), [partyId]: metric } }));
+  }, [setState]);
 
   const total        = summaries.reduce((s, x) => s + x.currentValueEur, 0);
   const totalInvested= summaries.reduce((s, x) => s + x.invested, 0);
   const totalPnl     = total - totalInvested;
   const totalPnlPct  = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
-  const totalFees    = state.transactions.reduce((s, t) => s + (+t.feeEur || 0), 0);
+  const totalFees    = state.transactions.reduce((s, t) => s + (+t.feeEur || 0) + (t.type === 'kosten' ? (+t.amountEur || 0) : 0), 0);
 
   const timeSeries = React.useMemo(
-    () => buildValueTimeSeries(state.transactions, PARTIES, spots),
-    [state.transactions, spots]
+    () => buildValueTimeSeries(state.transactions, allParties, spots),
+    [state.transactions, spots, allParties]
   );
   const partyTimeSeries = React.useMemo(
-    () => buildPartyTimeSeries(state.transactions, PARTIES, spots),
-    [state.transactions, spots]
+    () => buildPartyTimeSeries(state.transactions, allParties, spots),
+    [state.transactions, spots, allParties]
   );
   const monthly = React.useMemo(() => buildMonthlyFlows(state.transactions), [state.transactions]);
 
@@ -49,7 +78,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     return timeSeries.filter((_, i) => i % step === 0 || i === timeSeries.length - 1);
   }, [timeSeries]);
 
-  const detailParty   = detailPartyId ? PARTIES.find(p => p.id === detailPartyId) : null;
+  const detailParty   = detailPartyId ? allParties.find(p => p.id === detailPartyId) : null;
   const detailSummary = detailParty ? summaries.find(s => s.party.id === detailParty.id) : null;
 
   const openAdd  = (preset = null) => { setModalPreset(preset); setEditingTx(null); setModalOpen(true); };
@@ -83,6 +112,20 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
   const donutItems = summaries
     .filter(s => s.currentValueEur > 0)
     .map(s => ({ label: s.party.name, value: s.currentValueEur, color: s.party.color }));
+
+  const saveCustomParty = React.useCallback(p => {
+    setState(s => {
+      const exists = (s.customParties || []).some(x => x.id === p.id);
+      return { ...s, customParties: exists
+        ? (s.customParties || []).map(x => x.id === p.id ? p : x)
+        : [...(s.customParties || []), p] };
+    });
+  }, [setState]);
+
+  const deleteCustomParty = React.useCallback(id => {
+    if (!confirm('Partij verwijderen? Bijbehorende transacties blijven bestaan.')) return;
+    setState(s => ({ ...s, customParties: (s.customParties || []).filter(p => p.id !== id) }));
+  }, [setState]);
 
   // Render a widget by id
   const renderWidget = (wCfg) => {
@@ -151,20 +194,39 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
             <MonthlyBars months={monthly} height={200} />
           </Card>
         );
-      case 'allocation_lines':
+      case 'allocation_lines': {
+        const visibleParties = allParties.filter(p => !hiddenParties.includes(p.id));
         return (
           <Card style={{ padding:22 }}>
             {header('Waarde per allocatie', 'Ontwikkeling per partij')}
-            <AllocationLineChart timeSeries={partyTimeSeries} parties={PARTIES} height={260} />
+            {/* Visibility toggles */}
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:10 }}>
+              {allParties.map(p => {
+                const hidden = hiddenParties.includes(p.id);
+                return (
+                  <button key={p.id} onClick={() => setHiddenParties(
+                    hidden ? hiddenParties.filter(id => id !== p.id) : [...hiddenParties, p.id]
+                  )} style={{
+                    padding:'3px 9px', fontSize:11, fontFamily:'inherit', cursor:'pointer', borderRadius:999,
+                    background: hidden ? 'transparent' : p.color,
+                    color: hidden ? 'var(--fg-dim)' : '#fff',
+                    border: `1px solid ${hidden ? 'var(--border)' : p.color}`,
+                    opacity: hidden ? 0.5 : 1, transition:'all .15s',
+                  }}>{p.name}</button>
+                );
+              })}
+            </div>
+            <AllocationLineChart timeSeries={partyTimeSeries} parties={visibleParties} height={260} />
           </Card>
         );
+      }
       case 'party_grid':
         return (
           <div>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:10 }}>
               <h2 style={{ margin:0, fontFamily:'var(--ff-display)', fontSize:26, fontWeight:500, letterSpacing:'-0.015em' }}>Partijen</h2>
-              <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                {['all', ...Array.from(new Set(PARTIES.map(p => p.category)))].map(c => (
+              <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
+                {['all', ...Array.from(new Set(allParties.map(p => p.category)))].map(c => (
                   <button key={c} onClick={() => setFilterCategory(c)}
                     style={{ fontFamily:'inherit', padding:'5px 11px', fontSize:12,
                       background: filterCategory===c?'var(--fg)':'transparent',
@@ -174,6 +236,11 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
                     {c === 'all' ? 'Alle' : c}
                   </button>
                 ))}
+                <button onClick={() => { setEditParty(null); setAddPartyOpen(true); }}
+                  style={{ fontFamily:'inherit', padding:'5px 11px', fontSize:12, cursor:'pointer', borderRadius:999,
+                    background:'var(--accent)', color:'#fff', border:'1px solid var(--accent)' }}>
+                  + Partij toevoegen
+                </button>
                 {editMode && <button onClick={() => toggleWidget(wCfg.id)}
                   style={{ padding:'5px 11px', fontSize:12, cursor:'pointer', borderRadius:999,
                     background:'transparent', border:'1px solid var(--negative)', color:'var(--negative)', fontFamily:'inherit' }}>
@@ -186,8 +253,14 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
                 .filter(s => filterCategory==='all' || s.party.category === filterCategory)
                 .map(s => (
                   <PartyCard key={s.party.id} summary={s} total={total} spots={spots}
+                    metric={tileMetrics[s.party.id] || 'pnl_eur'}
+                    onMetricChange={m => setTileMetric(s.party.id, m)}
                     onClick={() => setDetailPartyId(s.party.id)}
-                    onQuickAdd={() => openAdd({ party: s.party.id })} />
+                    onQuickAdd={() => openAdd({ party: s.party.id })}
+                    isCustom={!!(state.customParties||[]).find(p => p.id === s.party.id)}
+                    onEditParty={() => { setEditParty(s.party); setAddPartyOpen(true); }}
+                    onDeleteParty={() => deleteCustomParty(s.party.id)}
+                  />
                 ))}
             </div>
           </div>
@@ -203,7 +276,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
         return (
           <Card style={{ padding:22 }}>
             {header('Recente activiteit', `${state.transactions.length} transacties totaal`)}
-            <ActivityFeed txs={recentTxs} onClick={tx => setDetailPartyId(tx.party)} />
+            <ActivityFeed txs={recentTxs} parties={allParties} onClick={tx => setDetailPartyId(tx.party)} />
           </Card>
         );
       case 'fees_summary':
@@ -416,7 +489,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       <TransactionModal
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditingTx(null); }}
-        onSave={saveTx} parties={PARTIES} preset={modalPreset} initial={editingTx}
+        onSave={saveTx} parties={allParties} preset={modalPreset} initial={editingTx}
         transactions={state.transactions}
       />
       <PartyDetail
@@ -424,6 +497,10 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
         party={detailParty} summary={detailSummary} spots={spots}
         onAddTx={preset => { setDetailPartyId(null); openAdd(preset); }}
         onDeleteTx={deleteTx} onEditTx={tx => { setDetailPartyId(null); openEdit(tx); }}
+      />
+      <AddPartyModal
+        open={addPartyOpen} onClose={() => { setAddPartyOpen(false); setEditParty(null); }}
+        onSave={saveCustomParty} initial={editParty}
       />
     </div>
   );
@@ -464,14 +541,29 @@ function SpotEditor({ label, value, onChange, step }) {
   );
 }
 
-function PartyCard({ summary, total, spots, onClick, onQuickAdd }) {
+function PartyCard({ summary, total, spots, onClick, onQuickAdd, metric = 'pnl_eur', onMetricChange, isCustom, onEditParty, onDeleteParty }) {
   const p = summary.party;
+  const [metricOpen, setMetricOpen] = React.useState(false);
   const share   = total > 0 ? (summary.currentValueEur / total) * 100 : 0;
   const goalPct = p.isMixed
-    ? (summary.currentValueEur / p.goal) * 100
+    ? (summary.currentValueEur / (p.goal||1)) * 100
     : (p.unit==='gram'||p.unit==='ounce')
-      ? (summary.quantity / p.goal) * 100
-      : (summary.currentValueEur / p.goal) * 100;
+      ? (summary.quantity / (p.goal||1)) * 100
+      : (summary.currentValueEur / (p.goal||1)) * 100;
+
+  // Metric display
+  const metricLabel = TILE_METRICS.find(m => m.key === metric)?.short || '%';
+  const metricNode = (() => {
+    switch (metric) {
+      case 'pnl_eur':  return <><Delta value={summary.pnl} format="eur" /> <span style={{ fontSize:10, color:'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>winst</span></>;
+      case 'pnl_pct':  return <><Delta value={summary.pnlPct} /> <span style={{ fontSize:10, color:'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>all-time</span></>;
+      case 'ytd_pct':  return <span style={{ fontSize:12, color:'var(--fg-muted)', fontFamily:'var(--ff-mono)' }}>YTD — zie grafiek</span>;
+      case 'value':    return <span style={{ fontFamily:'var(--ff-mono)', fontSize:13, color:'var(--fg)' }}>{fmtEur(summary.currentValueEur,{decimals:2})}</span>;
+      case 'invested': return <span style={{ fontFamily:'var(--ff-mono)', fontSize:13, color:'var(--fg-muted)' }}>inleg {fmtEur(summary.invested,{decimals:0})}</span>;
+      case 'share':    return <span style={{ fontFamily:'var(--ff-mono)', fontSize:13, color:'var(--fg-muted)' }}>{share.toFixed(1)}% van portfolio</span>;
+      default:         return <Delta value={summary.pnlPct} />;
+    }
+  })();
 
   return (
     <Card hover onClick={onClick} style={{ padding:18, display:'flex', flexDirection:'column', gap:12, position:'relative', overflow:'hidden' }}>
@@ -481,7 +573,17 @@ function PartyCard({ summary, total, spots, onClick, onQuickAdd }) {
           <div style={{ fontFamily:'var(--ff-display)', fontSize:18, fontWeight:500, letterSpacing:'-0.01em', lineHeight:1.2 }}>{p.name}</div>
           <div style={{ fontSize:11, color:'var(--fg-muted)', marginTop:3 }}>{p.subtitle}</div>
         </div>
-        <Pill tone="neutral">{p.category}</Pill>
+        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+          <Pill tone="neutral">{p.category}</Pill>
+          {isCustom && (
+            <>
+              <button onClick={e => { e.stopPropagation(); onEditParty && onEditParty(); }}
+                title="Bewerken" style={{ background:'transparent', border:'none', color:'var(--fg-muted)', cursor:'pointer', fontSize:11, padding:'2px 4px' }}>✎</button>
+              <button onClick={e => { e.stopPropagation(); onDeleteParty && onDeleteParty(); }}
+                title="Verwijderen" style={{ background:'transparent', border:'none', color:'var(--fg-dim)', cursor:'pointer', fontSize:13, padding:'2px 4px' }}>×</button>
+            </>
+          )}
+        </div>
       </div>
 
       <div>
@@ -489,8 +591,7 @@ function PartyCard({ summary, total, spots, onClick, onQuickAdd }) {
           {fmtEur(summary.currentValueEur, {decimals:0})}
         </div>
         <div style={{ display:'flex', gap:10, marginTop:4, alignItems:'center', flexWrap:'wrap' }}>
-          <Delta value={summary.pnlPct} />
-          <span style={{ fontSize:11, color:'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>{fmtEur(summary.pnl, {sign:true})}</span>
+          {metricNode}
         </div>
       </div>
 
@@ -504,7 +605,7 @@ function PartyCard({ summary, total, spots, onClick, onQuickAdd }) {
       {p.isMixed && (
         <div style={{ fontSize:11, color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
           <span>Au: {fmtQty(summary.goldQty||0,'g')}</span>
-          <span>Ag: {fmtQty(summary.silverQty||0,'oz')}</span>
+          <span>Ag: {fmtQty((summary.silverQty||0) * OZ_TO_GRAM,'g')}</span>
         </div>
       )}
       {p.unit==='part' && summary.quantity > 0 && (
@@ -515,18 +616,42 @@ function PartyCard({ summary, total, spots, onClick, onQuickAdd }) {
       )}
 
       {/* Goal bar */}
-      <div>
-        <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--fg-dim)', marginBottom:4, fontFamily:'var(--ff-mono)', textTransform:'uppercase', letterSpacing:'0.05em' }}>
-          <span>Doel</span>
-          <span>{p.isMixed || p.unit==='eur' || p.unit==='part' ? fmtEur(p.goal) : fmtQty(p.goal, p.unit)} · {goalPct.toFixed(0)}%</span>
+      {p.goal > 0 && (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--fg-dim)', marginBottom:4, fontFamily:'var(--ff-mono)', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+            <span>Doel</span>
+            <span>{p.isMixed || p.unit==='eur' || p.unit==='part' ? fmtEur(p.goal) : fmtQty(p.goal, p.unit)} · {goalPct.toFixed(0)}%</span>
+          </div>
+          <div style={{ height:4, background:'var(--surface-2)', borderRadius:2, overflow:'hidden' }}>
+            <div style={{ width:`${Math.min(100,Math.max(0,goalPct))}%`, height:'100%', background:p.color, transition:'width .3s' }} />
+          </div>
         </div>
-        <div style={{ height:4, background:'var(--surface-2)', borderRadius:2, overflow:'hidden' }}>
-          <div style={{ width:`${Math.min(100,Math.max(0,goalPct))}%`, height:'100%', background:p.color, transition:'width .3s' }} />
-        </div>
-      </div>
+      )}
 
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'auto', paddingTop:6, borderTop:'1px solid var(--border)' }}>
-        <div style={{ fontSize:11, color:'var(--fg-muted)', fontFamily:'var(--ff-mono)' }}>{share.toFixed(1)}% van portfolio</div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'auto', paddingTop:6, borderTop:'1px solid var(--border)', position:'relative' }}>
+        {/* Metric picker */}
+        <div style={{ position:'relative' }}>
+          <button onClick={e => { e.stopPropagation(); setMetricOpen(o => !o); }}
+            style={{ background:'transparent', border:'1px solid var(--border)', borderRadius:'var(--radius)',
+              padding:'3px 8px', fontSize:10, color:'var(--fg-muted)', cursor:'pointer', fontFamily:'var(--ff-mono)' }}>
+            {metricLabel} ▾
+          </button>
+          {metricOpen && (
+            <div onClick={e => e.stopPropagation()} style={{ position:'absolute', bottom:'calc(100% + 6px)', left:0,
+              background:'var(--surface)', border:'1px solid var(--border-strong)', borderRadius:'var(--radius)',
+              boxShadow:'0 8px 24px rgba(0,0,0,0.2)', zIndex:50, minWidth:160, overflow:'hidden' }}>
+              {TILE_METRICS.map(m => (
+                <button key={m.key} onClick={() => { onMetricChange && onMetricChange(m.key); setMetricOpen(false); }}
+                  style={{ display:'block', width:'100%', textAlign:'left', padding:'8px 12px', fontSize:12, fontFamily:'inherit',
+                    background: metric===m.key ? 'var(--surface-2)' : 'transparent',
+                    color: metric===m.key ? 'var(--fg)' : 'var(--fg-muted)',
+                    border:'none', borderBottom:'1px solid var(--border)', cursor:'pointer' }}>
+                  {metric===m.key ? '✓ ' : '  '}{m.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button onClick={e => { e.stopPropagation(); onQuickAdd(); }}
           style={{ background:'transparent', border:'1px solid var(--border)', borderRadius:'var(--radius)',
             padding:'4px 10px', fontSize:11, color:'var(--fg-muted)', cursor:'pointer', fontFamily:'inherit' }}>
@@ -534,6 +659,112 @@ function PartyCard({ summary, total, spots, onClick, onQuickAdd }) {
         </button>
       </div>
     </Card>
+  );
+}
+
+// ===== Modal: voeg aangepaste partij toe / bewerk =====
+const PARTY_UNIT_OPTIONS = [
+  { value:'eur',    label:'Euro (€) — cash/sparen' },
+  { value:'part',   label:'Participaties / aandelen' },
+  { value:'gram',   label:'Gram goud' },
+  { value:'ounce',  label:'Ounce zilver' },
+  { value:'crypto', label:'Crypto token' },
+  { value:'bundle', label:'Bundel (totaalwaarde)' },
+];
+const CATEGORY_OPTIONS = ['Indexfondsen','Crypto','Edelmetaal','Broker','Liquide','Overig'];
+const COLOR_PRESETS = [
+  'oklch(58% 0.14 255)','oklch(72% 0.18 55)','oklch(60% 0.12 265)',
+  'oklch(76% 0.14 85)','oklch(62% 0.15 195)','oklch(55% 0.16 145)',
+  'oklch(70% 0.03 240)','oklch(65% 0.18 320)','oklch(68% 0.15 30)',
+  'oklch(62% 0.13 170)','oklch(72% 0.22 310)','oklch(55% 0.05 160)',
+];
+
+function AddPartyModal({ open, onClose, onSave, initial }) {
+  const blank = p => ({
+    name:     p?.name     || '',
+    subtitle: p?.subtitle || '',
+    category: p?.category || 'Overig',
+    unit:     p?.unit     || 'eur',
+    unitLabel:p?.unitLabel|| '€',
+    goal:     p?.goal     || '',
+    color:    p?.color    || COLOR_PRESETS[0],
+    spotKey:  p?.spotKey  || '',
+  });
+  const [form, setForm] = React.useState(() => blank(initial));
+  React.useEffect(() => { if (open) setForm(blank(initial)); }, [open, initial]);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const valid = form.name.trim().length > 0;
+
+  const submit = () => {
+    if (!valid) return;
+    const id = initial?.id || 'custom_' + Date.now().toString(36);
+    onSave({ id, name:form.name.trim(), subtitle:form.subtitle.trim(),
+      category:form.category, unit:form.unit, unitLabel:form.unitLabel||'€',
+      goal: +form.goal || 0, color:form.color,
+      ...(form.unit==='crypto' && form.spotKey ? { spotKey:form.spotKey } : {}),
+    });
+    onClose();
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} width={480}>
+      <div style={{ padding:'20px 22px 12px', borderBottom:'1px solid var(--border)' }}>
+        <div style={{ fontFamily:'var(--ff-display)', fontSize:22, fontWeight:500 }}>
+          {initial ? 'Partij bewerken' : 'Partij toevoegen'}
+        </div>
+        <div style={{ fontSize:12, color:'var(--fg-muted)', marginTop:4 }}>
+          Maak een eigen beleggingscategorie aan.
+        </div>
+      </div>
+      <div style={{ padding:22, display:'grid', gap:13 }}>
+        <Field label="Naam">
+          <Input value={form.name} onChange={e => set('name', e.target.value)} placeholder="bijv. Pensioenfonds ABP" />
+        </Field>
+        <Field label="Omschrijving (optioneel)">
+          <Input value={form.subtitle} onChange={e => set('subtitle', e.target.value)} placeholder="bijv. Werkgeverspensioenfonds" />
+        </Field>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          <Field label="Categorie">
+            <Select value={form.category} onChange={e => set('category', e.target.value)}>
+              {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+            </Select>
+          </Field>
+          <Field label="Type eenheid">
+            <Select value={form.unit} onChange={e => set('unit', e.target.value)}>
+              {PARTY_UNIT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </Select>
+          </Field>
+        </div>
+        {form.unit === 'crypto' && (
+          <Field label="Spot-prijs sleutel (optioneel)" hint="bijv. btcSpotEur, ethSpotEur, paxgSpotEur">
+            <Input value={form.spotKey} onChange={e => set('spotKey', e.target.value)} placeholder="btcSpotEur" />
+          </Field>
+        )}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          <Field label="Eenheid label (bijv. part. / BTC)">
+            <Input value={form.unitLabel} onChange={e => set('unitLabel', e.target.value)} placeholder="€" />
+          </Field>
+          <Field label="Doel (€ of eenheden)">
+            <Input type="number" value={form.goal} onChange={e => set('goal', e.target.value)} placeholder="5000" />
+          </Field>
+        </div>
+        <Field label="Kleur">
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            {COLOR_PRESETS.map(c => (
+              <button key={c} onClick={() => set('color', c)} type="button"
+                style={{ width:26, height:26, borderRadius:'50%', background:c, border:form.color===c?'3px solid var(--fg)':'2px solid transparent', cursor:'pointer' }} />
+            ))}
+          </div>
+        </Field>
+      </div>
+      <div style={{ padding:'12px 22px 18px', display:'flex', justifyContent:'space-between', gap:10, borderTop:'1px solid var(--border)', background:'var(--surface-2)' }}>
+        <Button variant="ghost" onClick={onClose}>Annuleren</Button>
+        <Button variant="primary" onClick={submit} style={{ opacity:valid?1:0.4 }}>
+          {initial ? 'Opslaan' : 'Toevoegen'}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -566,12 +797,13 @@ function MonthlyTable({ months }) {
   );
 }
 
-function ActivityFeed({ txs, onClick }) {
+function ActivityFeed({ txs, parties, onClick }) {
+  const partyList = parties || PARTIES;
   if (!txs.length) return <div style={{ color:'var(--fg-dim)', fontSize:13, padding:'24px 0' }}>Geen activiteit.</div>;
   return (
     <div style={{ display:'grid', gap:2 }}>
       {txs.map(t => {
-        const p = PARTIES.find(x => x.id === t.party);
+        const p = partyList.find(x => x.id === t.party);
         return (
           <div key={t.id} onClick={() => onClick(t)} style={{ display:'grid', gridTemplateColumns:'8px 1fr auto',
             gap:10, alignItems:'center', padding:'10px 2px', borderBottom:'1px dashed var(--border)', cursor:'pointer' }}>
@@ -596,4 +828,4 @@ function ActivityFeed({ txs, onClick }) {
   );
 }
 
-Object.assign(window, { Dashboard, PartyCard, MonthlyTable, ActivityFeed, SectionTitle, HeroStat, SpotEditor });
+Object.assign(window, { Dashboard, PartyCard, MonthlyTable, ActivityFeed, SectionTitle, HeroStat, SpotEditor, AddPartyModal, TILE_METRICS });

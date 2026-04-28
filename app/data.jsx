@@ -101,6 +101,35 @@ const SEED_TX = [
   { party:'meesman', type:'koop', date:'2026-03-02', quantity:3.5791, unitPriceEur:97.5442, feeEur:0.87, note:'Normaal' },
 ];
 
+// ===== GoldRepublic zilver-transacties (uit maandafschriften) =====
+// silverUnit:'gram' → intern opgeslagen als oz via silverToOz()
+// unitPriceEur = transactiewaarde / volume (€/gram)
+// feeEur = fee + handling costs (volledig)
+const GR_SEED_TX = [
+  // ── 2025 ──
+  { party:'goldrepublic', type:'koop',    date:'2025-05-01', quantity:52.530, unitPriceEur:0.9381, feeEur:0.72, metalType:'zilver', silverUnit:'gram', note:'Spaarplan zilver mei 2025' },
+  { party:'goldrepublic', type:'koop',    date:'2025-06-02', quantity:51.109, unitPriceEur:0.9644, feeEur:0.71, metalType:'zilver', silverUnit:'gram', note:'Spaarplan zilver jun 2025' },
+  { party:'goldrepublic', type:'kosten',  date:'2025-06-16', amountEur:0.04,  note:'Opslagkosten mei 2025' },
+  { party:'goldrepublic', type:'koop',    date:'2025-07-11', quantity:47.211, unitPriceEur:1.0598, feeEur:0.92, metalType:'zilver', silverUnit:'gram', note:'Market order jul 2025' },
+  { party:'goldrepublic', type:'kosten',  date:'2025-07-15', amountEur:0.10,  note:'Opslagkosten jun 2025' },
+  { party:'goldrepublic', type:'koop',    date:'2025-07-30', quantity:45.906, unitPriceEur:1.0891, feeEur:0.91, metalType:'zilver', silverUnit:'gram', note:'Market order jul 2025' },
+  { party:'goldrepublic', type:'kosten',  date:'2025-08-15', amountEur:0.13,  note:'Opslagkosten jul 2025' },
+  { party:'goldrepublic', type:'koop',    date:'2025-08-25', quantity:44.777, unitPriceEur:1.0966, feeEur:0.90, metalType:'zilver', silverUnit:'gram', note:'Market order aug 2025' },
+  { party:'goldrepublic', type:'kosten',  date:'2025-09-15', amountEur:0.22,  note:'Opslagkosten aug 2025' },
+  { party:'goldrepublic', type:'koop',    date:'2025-09-24', quantity:39.661, unitPriceEur:1.2390, feeEur:0.86, metalType:'zilver', silverUnit:'gram', note:'Market order sep 2025' },
+  { party:'goldrepublic', type:'kosten',  date:'2025-10-15', amountEur:0.29,  note:'Opslagkosten sep 2025' },
+  { party:'goldrepublic', type:'kosten',  date:'2025-11-17', amountEur:0.40,  note:'Opslagkosten okt 2025' },
+  { party:'goldrepublic', type:'kosten',  date:'2025-12-15', amountEur:0.40,  note:'Opslagkosten nov 2025' },
+  // ── 2026 ──
+  { party:'goldrepublic', type:'kosten',  date:'2026-01-16', amountEur:0.52,  note:'Opslagkosten dec 2025' },
+  { party:'goldrepublic', type:'verkoop', date:'2026-01-26', quantity:281.194, unitPriceEur:2.9625, feeEur:8.33, metalType:'zilver', silverUnit:'gram', note:'Verkoop volledig zilver' },
+  { party:'goldrepublic', type:'kosten',  date:'2026-02-16', amountEur:0.56,  note:'Opslagkosten jan 2026' },
+  { party:'goldrepublic', type:'koop',    date:'2026-03-02', quantity:36.884, unitPriceEur:2.6752, feeEur:1.32, metalType:'zilver', silverUnit:'gram', note:'Market order mrt 2026' },
+  { party:'goldrepublic', type:'koop',    date:'2026-03-24', quantity:49.362, unitPriceEur:1.9967, feeEur:1.43, metalType:'zilver', silverUnit:'gram', note:'Market order mrt 2026' },
+  { party:'goldrepublic', type:'kosten',  date:'2026-04-15', amountEur:0.11,  note:'Opslagkosten mrt 2026' },
+  { party:'goldrepublic', type:'koop',    date:'2026-04-26', quantity:46.101, unitPriceEur:2.1388, feeEur:1.40, metalType:'zilver', silverUnit:'gram', note:'Market order apr 2026' },
+];
+
 function makeId() { return 'tx_' + Math.random().toString(36).slice(2, 10); }
 
 function loadState() {
@@ -108,14 +137,28 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Ensure widgets key exists
-      if (!parsed.widgets) parsed.widgets = DEFAULT_WIDGETS.map(w => ({ ...w }));
+      if (!parsed.widgets)       parsed.widgets       = DEFAULT_WIDGETS.map(w => ({ ...w }));
+      if (!parsed.customParties) parsed.customParties = [];
+      if (!parsed.hiddenParties) parsed.hiddenParties = [];
+      if (!parsed.tileMetrics)   parsed.tileMetrics   = {};
+      // Migration: voeg GoldRepublic-transacties toe als ze nog niet bestaan
+      const hasGR = parsed.transactions.some(t => t.party === 'goldrepublic');
+      if (!hasGR) {
+        const grTxs = GR_SEED_TX.map((t, i) => ({ id: makeId() + 'gr' + i, ...t }));
+        parsed.transactions = [...parsed.transactions, ...grTxs];
+      }
       return parsed;
     }
   } catch (e) {}
   return {
-    transactions: SEED_TX.map((t, i) => ({ id: makeId() + i, ...t })),
-    widgets: DEFAULT_WIDGETS.map(w => ({ ...w })),
+    transactions: [
+      ...SEED_TX.map((t, i) => ({ id: makeId() + i, ...t })),
+      ...GR_SEED_TX.map((t, i) => ({ id: makeId() + 'gr' + i, ...t })),
+    ],
+    widgets:       DEFAULT_WIDGETS.map(w => ({ ...w })),
+    customParties: [],
+    hiddenParties: [],
+    tileMetrics:   {},
   };
 }
 
@@ -172,8 +215,8 @@ function summarizeParty(party, transactions, spots) {
   let netCashIn = 0;
 
   for (const t of txs) {
-    // Accumulate transaction fees
-    if (t.feeEur) totalFees += +t.feeEur;
+    // Transactiekosten tellen mee in costBasis (echte netto-investering)
+    if (t.feeEur) { totalFees += +t.feeEur; costBasis += +t.feeEur; }
 
     switch (t.type) {
       case 'inleg':
@@ -234,8 +277,13 @@ function summarizeParty(party, transactions, spots) {
         totalIncome   += divValue;
         break;
       }
-      case 'rente':    totalIncome   += +t.amountEur || 0; break;
-      case 'kosten':   totalFees     += +t.amountEur || 0; break;
+      case 'rente':  totalIncome += +t.amountEur || 0; break;
+      case 'kosten': {
+        const kst = +t.amountEur || 0;
+        totalFees += kst;
+        costBasis += kst; // opslagkosten e.d. tellen mee als werkelijke investering
+        break;
+      }
       case 'waardering':
         if (t.unitPriceEur != null) lastUnitPrice  = +t.unitPriceEur;
         if (t.valueEur     != null) lastTotalValue = +t.valueEur;
@@ -318,6 +366,7 @@ function buildPartyTimeSeries(transactions, parties, spots) {
     while (ti < sorted.length && sorted[ti].date <= iso) {
       const t = sorted[ti]; const s = state[t.party]; if (!s) { ti++; continue; }
       const p = parties.find(x => x.id === t.party);
+      if (t.feeEur) s.cost += +t.feeEur; // fees tellen mee in investering
       switch (t.type) {
         case 'inleg':
           if (p.unit === 'eur' || p.unit === 'bundle') { s.qty += +t.amountEur||0; s.cost += +t.amountEur||0; }
@@ -367,6 +416,9 @@ function buildPartyTimeSeries(transactions, parties, spots) {
           }
           break;
         }
+        case 'kosten':
+          s.cost += +t.amountEur || 0; // opslagkosten in investering
+          break;
         case 'waardering':
           if (t.unitPriceEur != null) s.lastUnitPx = +t.unitPriceEur;
           if (t.valueEur     != null) s.lastTotal  = +t.valueEur;
@@ -502,7 +554,7 @@ function fmtMonth(ym) {
 }
 
 Object.assign(window, {
-  PARTIES, TX_TYPES, TX_LABELS, SEED_TX,
+  PARTIES, TX_TYPES, TX_LABELS, SEED_TX, GR_SEED_TX,
   WIDGET_REGISTRY, DEFAULT_WIDGETS,
   OZ_TO_GRAM, silverToOz, goldToGram,
   loadState, saveState, makeId,

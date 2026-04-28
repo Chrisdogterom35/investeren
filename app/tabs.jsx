@@ -2,6 +2,7 @@
 
 // ===== Transactions Tab =====
 function TransactionsTab({ state, setState, spots }) {
+  const allParties = React.useMemo(() => [...PARTIES, ...(state.customParties || [])], [state.customParties]);
   const [filterParty, setFilterParty] = React.useState('all');
   const [filterType, setFilterType] = React.useState('all');
   const [expandedId, setExpandedId] = React.useState(null);
@@ -33,10 +34,9 @@ function TransactionsTab({ state, setState, spots }) {
   const openEdit = tx => { setEditingTx(tx); setPreset(null); setModalOpen(true); };
   const openAdd  = (p = null) => { setEditingTx(null); setPreset(p); setModalOpen(true); };
 
-  // Per-party quantity summaries for context bar
   const summaries = React.useMemo(
-    () => PARTIES.map(p => summarizeParty(p, state.transactions, spots)),
-    [state.transactions, spots.goldSpotEurPerGram, spots.silverSpotEurPerOunce]
+    () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
+    [state.transactions, spots.goldSpotEurPerGram, spots.silverSpotEurPerOunce, allParties]
   );
 
   const totalFees = state.transactions.reduce((s, t) => s + (+t.feeEur || 0), 0);
@@ -95,7 +95,7 @@ function TransactionsTab({ state, setState, spots }) {
       <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
           <FilterChip active={filterParty==='all'} onClick={() => setFilterParty('all')}>Alle partijen</FilterChip>
-          {PARTIES.map(p => (
+          {allParties.map(p => (
             <FilterChip key={p.id} active={filterParty===p.id} onClick={() => setFilterParty(p.id)} color={p.color}>
               {p.name}
             </FilterChip>
@@ -136,7 +136,7 @@ function TransactionsTab({ state, setState, spots }) {
         )}
 
         {filtered.map((t, idx) => {
-          const p = PARTIES.find(x => x.id === t.party);
+          const p = allParties.find(x => x.id === t.party);
           if (!p) return null;
           const expanded = expandedId === t.id;
           return (
@@ -255,7 +255,7 @@ function TransactionsTab({ state, setState, spots }) {
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditingTx(null); }}
         onSave={saveTx}
-        parties={PARTIES}
+        parties={allParties}
         preset={preset}
         initial={editingTx}
         transactions={state.transactions}

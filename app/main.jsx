@@ -277,8 +277,10 @@ function App() {
           setImportMsg({ ok: false, text: 'Ongeldig bestand — geen transacties gevonden' });
           return;
         }
-        // Zorg voor widgets-key
-        if (!data.widgets) data.widgets = DEFAULT_WIDGETS.map(w => ({ ...w }));
+        if (!data.widgets)       data.widgets       = DEFAULT_WIDGETS.map(w => ({ ...w }));
+        if (!data.customParties) data.customParties = [];
+        if (!data.hiddenParties) data.hiddenParties = [];
+        if (!data.tileMetrics)   data.tileMetrics   = {};
         setState(data);
         setImportMsg({ ok: true, text: `${data.transactions.length} transacties geladen` });
       } catch {
@@ -301,9 +303,13 @@ function App() {
        tweaks.btcSpotEur, tweaks.ethSpotEur, tweaks.paxgSpotEur,
        tweaks.meesmanNavEur, tweaks.meesmanNavHistory]);
 
+  const allParties = React.useMemo(
+    () => [...PARTIES, ...(state.customParties || [])],
+    [state.customParties]
+  );
   const summaries = React.useMemo(
-    () => PARTIES.map(p => summarizeParty(p, state.transactions, spots)),
-    [state.transactions, spots]
+    () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
+    [state.transactions, spots, allParties]
   );
 
   return (
