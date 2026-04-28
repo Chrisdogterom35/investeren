@@ -55,7 +55,7 @@
     --fg: #f1efe7;
     --fg-muted: #9a978b;
     --fg-dim: #605e54;
-    --accent: oklch(78% 0.14 85);
+    --accent: oklch(78% 0.14 85); /* warm gold */
     --positive: oklch(72% 0.17 150);
     --negative: oklch(68% 0.20 28);
     --ff-sans: 'Inter', system-ui, sans-serif;
@@ -94,7 +94,7 @@
     --surface-2: #111111;
     --border: #2a2a2a;
     --border-strong: #3a3a3a;
-    --fg: #ffb000;
+    --fg: #ffb000; /* amber */
     --fg-muted: #c48b00;
     --fg-dim: #7a5600;
     --accent: #ff8a00;
@@ -107,7 +107,9 @@
     --radius-lg: 0px;
     --shadow: none;
   }
-  .theme-terminal body, .theme-terminal { letter-spacing: 0.01em; }
+  .theme-terminal body, .theme-terminal {
+    letter-spacing: 0.01em;
+  }
 
   /* ========== THEME: NORD ========== */
   .theme-nord {
@@ -180,6 +182,7 @@
 
   #root { min-height: 100vh; }
 
+  /* Utility */
   .mono { font-family: var(--ff-mono); font-variant-numeric: tabular-nums; }
   .serif { font-family: var(--ff-display); }
   .tnum { font-variant-numeric: tabular-nums; }
@@ -200,7 +203,6 @@
     "meesmanNavEur": 97.55,
     "t212KeyId": "",
     "t212ApiKey": "",
-    "t212Mode": "live",
     "meesmanNavHistory": []
   }/*EDITMODE-END*/;
 </script>
