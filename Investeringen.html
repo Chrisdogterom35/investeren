@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <title>Investeringen — Dashboard</title>
-<meta name="viewport" content="width=1440" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
@@ -55,7 +55,7 @@
     --fg: #f1efe7;
     --fg-muted: #9a978b;
     --fg-dim: #605e54;
-    --accent: oklch(78% 0.14 85); /* warm gold */
+    --accent: oklch(78% 0.14 85);
     --positive: oklch(72% 0.17 150);
     --negative: oklch(68% 0.20 28);
     --ff-sans: 'Inter', system-ui, sans-serif;
@@ -94,7 +94,7 @@
     --surface-2: #111111;
     --border: #2a2a2a;
     --border-strong: #3a3a3a;
-    --fg: #ffb000; /* amber */
+    --fg: #ffb000;
     --fg-muted: #c48b00;
     --fg-dim: #7a5600;
     --accent: #ff8a00;
@@ -107,9 +107,7 @@
     --radius-lg: 0px;
     --shadow: none;
   }
-  .theme-terminal body, .theme-terminal {
-    letter-spacing: 0.01em;
-  }
+  .theme-terminal body, .theme-terminal { letter-spacing: 0.01em; }
 
   /* ========== THEME: NORD ========== */
   .theme-nord {
@@ -174,6 +172,69 @@
     --shadow: 0 4px 20px rgba(80,0,160,0.3), inset 0 0 0 1px rgba(160,100,255,0.06);
   }
 
+  /* ========== THEME: CATPPUCCIN MOCHA ========== */
+  .theme-catppuccin {
+    --bg: #1e1e2e;
+    --surface: #181825;
+    --surface-2: #11111b;
+    --border: #313244;
+    --border-strong: #45475a;
+    --fg: #cdd6f4;
+    --fg-muted: #bac2de;
+    --fg-dim: #6c7086;
+    --accent: #89b4fa;
+    --positive: #a6e3a1;
+    --negative: #f38ba8;
+    --ff-sans: 'Inter', system-ui, sans-serif;
+    --ff-display: 'Fraunces', 'Times New Roman', serif;
+    --ff-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --radius: 12px;
+    --radius-lg: 18px;
+    --shadow: 0 4px 20px rgba(0,0,0,0.45);
+  }
+
+  /* ========== THEME: GRUVBOX ========== */
+  .theme-gruvbox {
+    --bg: #282828;
+    --surface: #32302f;
+    --surface-2: #3c3836;
+    --border: #504945;
+    --border-strong: #665c54;
+    --fg: #ebdbb2;
+    --fg-muted: #d5c4a1;
+    --fg-dim: #928374;
+    --accent: #d79921;
+    --positive: #98971a;
+    --negative: #cc241d;
+    --ff-sans: 'Inter', system-ui, sans-serif;
+    --ff-display: 'Fraunces', Georgia, serif;
+    --ff-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --radius: 4px;
+    --radius-lg: 8px;
+    --shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+
+  /* ========== THEME: ROSE PINE ========== */
+  .theme-rosepine {
+    --bg: #191724;
+    --surface: #1f1d2e;
+    --surface-2: #26233a;
+    --border: #403d52;
+    --border-strong: #524f67;
+    --fg: #e0def4;
+    --fg-muted: #908caa;
+    --fg-dim: #6e6a86;
+    --accent: #c4a7e7;
+    --positive: #9ccfd8;
+    --negative: #eb6f92;
+    --ff-sans: 'Inter', system-ui, sans-serif;
+    --ff-display: 'Fraunces', Georgia, serif;
+    --ff-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --radius: 12px;
+    --radius-lg: 20px;
+    --shadow: 0 4px 20px rgba(25,23,36,0.6);
+  }
+
   /* Scrollbars */
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -182,10 +243,41 @@
 
   #root { min-height: 100vh; }
 
-  /* Utility */
   .mono { font-family: var(--ff-mono); font-variant-numeric: tabular-nums; }
   .serif { font-family: var(--ff-display); }
   .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ========== RESPONSIVE ========== */
+  @media (max-width: 768px) {
+    .dash-wrap { padding: 16px 14px 48px !important; }
+    .widget-row { grid-template-columns: 1fr !important; }
+    .hero-grid  { grid-template-columns: 1fr 1fr !important; gap: 16px !important; }
+    .hero-grid > div:first-child { grid-column: 1 / -1; }
+    .party-grid-inner { grid-template-columns: repeat(2, 1fr) !important; }
+    .nav-inner { padding: 0 14px !important; }
+    .nav-themes-row { display: none !important; }
+    .nav-theme-label { display: none !important; }
+    .nav-theme-select { display: inline-block !important; }
+    .tweaks-panel { width: calc(100vw - 24px) !important; right: 12px !important; left: 12px !important; bottom: 12px !important; max-height: 85vh !important; }
+    .spot-bar-source { display: none !important; }
+  }
+  @media (max-width: 420px) {
+    .hero-grid { grid-template-columns: 1fr !important; }
+    .party-grid-inner { grid-template-columns: 1fr !important; }
+  }
+
+  /* Theme select for mobile nav */
+  .nav-theme-select {
+    display: none;
+    padding: 5px 8px;
+    font-family: inherit;
+    font-size: 12px;
+    background: var(--surface);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -201,18 +293,18 @@
     "ethSpotEur": 1700,
     "paxgSpotEur": 3900,
     "meesmanNavEur": 97.55,
-    "t212KeyId": "",
     "t212ApiKey": "",
+    "t212Mode": "live",
     "meesmanNavHistory": []
   }/*EDITMODE-END*/;
 </script>
 
-<script type="text/babel" src="app/data.jsx?v=20260428b"></script>
-<script type="text/babel" src="app/ui.jsx?v=20260428b"></script>
-<script type="text/babel" src="app/charts.jsx?v=20260428b"></script>
-<script type="text/babel" src="app/modals.jsx?v=20260428b"></script>
-<script type="text/babel" src="app/dashboard.jsx?v=20260428b"></script>
-<script type="text/babel" src="app/tabs.jsx?v=20260428b"></script>
-<script type="text/babel" src="app/main.jsx?v=20260428b"></script>
+<script type="text/babel" src="app/data.jsx?v=20260428c"></script>
+<script type="text/babel" src="app/ui.jsx?v=20260428c"></script>
+<script type="text/babel" src="app/charts.jsx?v=20260428c"></script>
+<script type="text/babel" src="app/modals.jsx?v=20260428c"></script>
+<script type="text/babel" src="app/dashboard.jsx?v=20260428c"></script>
+<script type="text/babel" src="app/tabs.jsx?v=20260428c"></script>
+<script type="text/babel" src="app/main.jsx?v=20260428c"></script>
 </body>
 </html>

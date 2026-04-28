@@ -417,7 +417,201 @@ function GoalsProgress({ summaries }) {
   );
 }
 
+// ====== Portfolio return % over time ======
+function ReturnLineChart({ data, height = 230 }) {
+  const ref = React.useRef();
+  const [w, setW] = React.useState(600);
+  React.useEffect(() => {
+    if (!ref.current) return;
+    const ro = new ResizeObserver(entries => { for (const e of entries) setW(e.contentRect.width); });
+    ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
+  const [hoverIdx, setHoverIdx] = React.useState(null);
+  const filtered = data.filter(d => d.invested > 0);
+  if (!filtered.length) return <div ref={ref} style={{ height }} />;
+
+  const series = filtered.map(d => ({ ...d, ret: ((d.total - d.invested) / d.invested) * 100 }));
+  const pad = { t: 14, r: 14, b: 28, l: 52 };
+  const W = Math.max(300, w), H = height;
+  const innerW = W - pad.l - pad.r, innerH = H - pad.t - pad.b;
+  const rets = series.map(d => d.ret);
+  const minR = Math.min(0, ...rets) * 1.1;
+  const maxR = Math.max(0, ...rets) * 1.1 || 1;
+  const range = maxR - minR || 1;
+  const x = i => pad.l + (series.length > 1 ? (i / (series.length - 1)) * innerW : 0);
+  const y = v => pad.t + innerH - ((v - minR) / range) * innerH;
+  const zero = y(0);
+  const path = series.map((d, i) => `${i === 0 ? 'M' : 'L'}${x(i)} ${y(d.ret)}`).join(' ');
+  const areaPos = path + ` L${x(series.length-1)} ${zero} L${x(0)} ${zero} Z`;
+  const yTicks = [minR, minR/2, 0, maxR/2, maxR].filter((v,i,a) => a.indexOf(v) === i);
+  const stepX = Math.max(1, Math.floor(series.length / 5));
+  const xTickIdx = [];
+  for (let i = 0; i < series.length; i += stepX) xTickIdx.push(i);
+  if (xTickIdx[xTickIdx.length-1] !== series.length-1) xTickIdx.push(series.length-1);
+
+  const onMove = e => {
+    if (!ref.current) return;
+    const rect = ref.current.querySelector('svg').getBoundingClientRect();
+    const ratio = (e.clientX - rect.left - pad.l) / innerW;
+    setHoverIdx(Math.max(0, Math.min(series.length - 1, Math.round(ratio * (series.length - 1)))));
+  };
+  const hover = hoverIdx != null ? series[hoverIdx] : null;
+
+  return (
+    <div ref={ref} style={{ width:'100%', position:'relative' }}>
+      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display:'block' }}>
+        <defs>
+          <linearGradient id="ret-fill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="var(--positive)" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="var(--positive)" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {yTicks.map((v, i) => (
+          <g key={i}>
+            <line x1={pad.l} x2={W-pad.r} y1={y(v)} y2={y(v)} stroke={v===0?'var(--border-strong)':'var(--border)'} strokeWidth={v===0?1:1} strokeDasharray={v===0?'0':'2,3'} />
+            <text x={pad.l-8} y={y(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize="10" fontFamily="var(--ff-mono)">{v.toFixed(1)}%</text>
+          </g>
+        ))}
+        {xTickIdx.map(i => (
+          <text key={i} x={x(i)} y={H-pad.b+16} textAnchor="middle" fill="var(--fg-dim)" fontSize="10" fontFamily="var(--ff-mono)">
+            {fmtMonth(series[i].date.slice(0,7))}
+          </text>
+        ))}
+        <path d={areaPos} fill="url(#ret-fill)" />
+        <path d={path} fill="none" stroke="var(--positive)" strokeWidth="2" />
+        {hover && (
+          <g>
+            <line x1={x(hoverIdx)} x2={x(hoverIdx)} y1={pad.t} y2={H-pad.b} stroke="var(--border-strong)" strokeDasharray="2,2" />
+            <circle cx={x(hoverIdx)} cy={y(hover.ret)} r="4" fill="var(--positive)" stroke="var(--surface)" strokeWidth="2" />
+          </g>
+        )}
+      </svg>
+      {hover && (
+        <div style={{ position:'absolute', left:Math.min(W-200,Math.max(0,x(hoverIdx)-90)), top:4,
+          background:'var(--surface)', border:'1px solid var(--border-strong)', borderRadius:'var(--radius)',
+          padding:'8px 10px', fontSize:12, pointerEvents:'none', boxShadow:'var(--shadow)' }}>
+          <div style={{ color:'var(--fg-dim)', fontSize:10, fontFamily:'var(--ff-mono)' }}>{fmtDate(hover.date)}</div>
+          <div style={{ color:hover.ret>=0?'var(--positive)':'var(--negative)', fontWeight:600, fontFamily:'var(--ff-mono)' }}>{hover.ret>=0?'+':''}{hover.ret.toFixed(2)}%</div>
+          <div style={{ color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', fontSize:11 }}>{fmtEur(hover.total)} totaal</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ====== Return table ======
+function ReturnTable({ summaries }) {
+  const sorted = [...summaries].sort((a, b) => (b.pnlPct||0) - (a.pnlPct||0));
+  return (
+    <div style={{ display:'grid', gap:0, marginTop:4 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 90px 90px 80px', fontSize:10, color:'var(--fg-muted)',
+        textTransform:'uppercase', letterSpacing:'0.05em', padding:'0 4px 6px', borderBottom:'1px solid var(--border)', fontFamily:'var(--ff-mono)' }}>
+        <span>Partij</span>
+        <span style={{ textAlign:'right' }}>Ingelegd</span>
+        <span style={{ textAlign:'right' }}>Waarde</span>
+        <span style={{ textAlign:'right' }}>Rendement</span>
+      </div>
+      {sorted.map(s => (
+        <div key={s.party.id} style={{ display:'grid', gridTemplateColumns:'1fr 90px 90px 80px', fontSize:13,
+          padding:'8px 4px', borderBottom:'1px dashed var(--border)', fontFamily:'var(--ff-mono)', alignItems:'center' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, overflow:'hidden' }}>
+            <div style={dotStyle(s.party.color, 8)} />
+            <span style={{ color:'var(--fg)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12 }}>{s.party.name}</span>
+          </div>
+          <span style={{ textAlign:'right', color:'var(--fg-muted)', fontSize:12 }}>{s.invested>0?fmtEur(s.invested):'—'}</span>
+          <span style={{ textAlign:'right', color:'var(--fg)', fontSize:12 }}>{s.currentValueEur>0?fmtEur(s.currentValueEur):'—'}</span>
+          <span style={{ textAlign:'right', color:s.pnlPct>=0?'var(--positive)':'var(--negative)', fontSize:12 }}>
+            {s.invested>0?fmtPct(s.pnlPct,{decimals:2}):'—'}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ====== Monthly inleg line chart ======
+function MonthlyLineChart({ months, height = 200 }) {
+  const ref = React.useRef();
+  const [w, setW] = React.useState(600);
+  React.useEffect(() => {
+    if (!ref.current) return;
+    const ro = new ResizeObserver(entries => { for (const e of entries) setW(e.contentRect.width); });
+    ro.observe(ref.current); return () => ro.disconnect();
+  }, []);
+  const [hoverIdx, setHoverIdx] = React.useState(null);
+  if (!months.length) return <div ref={ref} style={{ height }} />;
+
+  const pad = { t: 12, r: 12, b: 30, l: 40 };
+  const W = Math.max(320, w), H = height;
+  const innerW = W-pad.l-pad.r, innerH = H-pad.t-pad.b;
+  const vals = months.map(m => m.inleg + m.koop);
+  const maxV = Math.max(1, ...vals);
+  const x = i => pad.l + (months.length > 1 ? (i / (months.length - 1)) * innerW : 0);
+  const y = v => pad.t + innerH - (v / maxV) * innerH;
+  const path = months.map((m, i) => `${i === 0 ? 'M' : 'L'}${x(i)} ${y(vals[i])}`).join(' ');
+  const area = path + ` L${x(months.length-1)} ${y(0)} L${x(0)} ${y(0)} Z`;
+
+  const onMove = e => {
+    if (!ref.current) return;
+    const rect = ref.current.querySelector('svg').getBoundingClientRect();
+    const ratio = (e.clientX - rect.left - pad.l) / innerW;
+    setHoverIdx(Math.max(0, Math.min(months.length-1, Math.round(ratio*(months.length-1)))));
+  };
+  const hover = hoverIdx != null ? months[hoverIdx] : null;
+
+  return (
+    <div ref={ref} style={{ width:'100%', position:'relative' }}>
+      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display:'block' }}>
+        <defs>
+          <linearGradient id="inleg-fill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.01" />
+          </linearGradient>
+        </defs>
+        {[0, 0.5, 1].map((f, i) => {
+          const v = maxV*f;
+          return (
+            <g key={i}>
+              <line x1={pad.l} x2={W-pad.r} y1={y(v)} y2={y(v)} stroke="var(--border)" strokeDasharray={i===0?'0':'2,3'} />
+              <text x={pad.l-6} y={y(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize="10" fontFamily="var(--ff-mono)">
+                {v>=1000?(v/1000).toFixed(1)+'k':Math.round(v)}
+              </text>
+            </g>
+          );
+        })}
+        {months.map((m, i) => {
+          const show = i===0 || i===months.length-1 || i%Math.max(1,Math.floor(months.length/6))===0;
+          return show ? (
+            <text key={i} x={x(i)} y={H-pad.b+16} textAnchor="middle" fill="var(--fg-muted)" fontSize="10" fontFamily="var(--ff-mono)">
+              {fmtMonth(m.month)}
+            </text>
+          ) : null;
+        })}
+        <path d={area} fill="url(#inleg-fill)" />
+        <path d={path} fill="none" stroke="var(--accent)" strokeWidth="2" />
+        {months.map((m, i) => (
+          <circle key={i} cx={x(i)} cy={y(vals[i])} r={hoverIdx===i?5:3}
+            fill={hoverIdx===i?'var(--accent)':'var(--surface)'} stroke="var(--accent)" strokeWidth="1.5" style={{ transition:'r .1s' }} />
+        ))}
+        {hover && (
+          <line x1={x(hoverIdx)} x2={x(hoverIdx)} y1={pad.t} y2={H-pad.b} stroke="var(--border-strong)" strokeDasharray="2,2" />
+        )}
+      </svg>
+      {hover && (
+        <div style={{ position:'absolute', left:Math.min(W-160,Math.max(0,x(hoverIdx)-70)), top:4,
+          background:'var(--surface)', border:'1px solid var(--border-strong)', borderRadius:'var(--radius)',
+          padding:'8px 10px', fontSize:12, pointerEvents:'none', boxShadow:'var(--shadow)' }}>
+          <div style={{ color:'var(--fg-dim)', fontSize:10, fontFamily:'var(--ff-mono)' }}>{fmtMonth(hover.month)}</div>
+          <div style={{ color:'var(--fg)', fontWeight:600, fontFamily:'var(--ff-mono)' }}>{fmtEur(vals[hoverIdx])}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 Object.assign(window, {
   LineChart, AllocationLineChart, AllocationBarChart,
   DonutChart, InvestedVsValueChart, ReturnBars, MonthlyBars, GoalsProgress,
+  ReturnLineChart, ReturnTable, MonthlyLineChart,
 });

@@ -160,17 +160,19 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       case 'portfolio_line':
         return (
           <Card style={{ padding:22 }}>
-            {header('Waarde over tijd', 'Huidige waarde vs. ingelegd')}
-            <LineChart data={sparse} height={230} />
+            {header('Waarde over tijd', ct === 'rendement%' ? 'Rendement % over tijd' : 'Huidige waarde vs. ingelegd')}
+            {ct === 'rendement%'
+              ? <ReturnLineChart data={sparse} height={230} />
+              : <LineChart data={sparse} height={230} />}
           </Card>
         );
       case 'allocation':
         return (
           <Card style={{ padding:22 }}>
             {header('Verdeling', 'Aandeel per partij')}
-            {ct === 'donut'
-              ? <DonutChart items={donutItems} size={180} thickness={30} />
-              : <AllocationBarChart items={donutItems} />}
+            {ct === 'balk'
+              ? <AllocationBarChart items={donutItems} />
+              : <DonutChart items={donutItems} size={180} thickness={30} />}
           </Card>
         );
       case 'party_comparison':
@@ -183,15 +185,19 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       case 'returns':
         return (
           <Card style={{ padding:22 }}>
-            {header('Rendement', '% per partij')}
-            <div style={{ marginTop:8 }}><ReturnBars summaries={summaries} /></div>
+            {header('Rendement', ct === 'tabel' ? 'Overzicht per partij' : '% per partij')}
+            {ct === 'tabel'
+              ? <ReturnTable summaries={summaries} />
+              : <div style={{ marginTop:8 }}><ReturnBars summaries={summaries} /></div>}
           </Card>
         );
       case 'monthly_inleg':
         return (
           <Card style={{ padding:22 }}>
             {header('Maandelijkse inleg', 'Incl. koopbedragen')}
-            <MonthlyBars months={monthly} height={200} />
+            {ct === 'lijn'
+              ? <MonthlyLineChart months={monthly} height={200} />
+              : <MonthlyBars months={monthly} height={200} />}
           </Card>
         );
       case 'allocation_lines': {
@@ -248,7 +254,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
                 </button>}
               </div>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
+            <div className="party-grid-inner" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
               {summaries
                 .filter(s => filterCategory==='all' || s.party.category === filterCategory)
                 .map(s => (
@@ -368,7 +374,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
   };
 
   return (
-    <div style={{ maxWidth:1360, margin:'0 auto', padding:'28px 28px 60px' }}>
+    <div className="dash-wrap" style={{ maxWidth:1360, margin:'0 auto', padding:'28px 28px 60px' }}>
       {/* HEADER */}
       <header style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:24, gap:20, flexWrap:'wrap' }}>
         <div>
@@ -417,7 +423,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
       {/* HERO TOTALS */}
       <Card style={{ padding:28, marginBottom:20 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1.6fr 1fr 1fr 1fr 1fr', gap:28, alignItems:'center', flexWrap:'wrap' }}>
+        <div className="hero-grid" style={{ display:'grid', gridTemplateColumns:'1.6fr 1fr 1fr 1fr 1fr', gap:28, alignItems:'start' }}>
           <div>
             <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'0.08em', color:'var(--fg-muted)', marginBottom:8, fontFamily:'var(--ff-mono)' }}>
               Totale portfolio waarde
@@ -435,7 +441,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
           <HeroStat label="YTD rendement"
             value={<Delta value={ytd.pnlPct} />}
             sub={`${fmtEur(ytd.pnl, {sign:true})} sinds 1 jan`} />
-          <HeroStat label="Dividenden & rente" value={fmtEur(summaries.reduce((s,x)=>s+x.totalIncome,0))} sub={`${PARTIES.length} partijen actief`} />
+          <HeroStat label="Dividenden & rente" value={fmtEur(summaries.reduce((s,x)=>s+x.totalIncome,0))} sub={`${summaries.filter(s=>s.currentValueEur>0).length} partijen actief`} />
           <HeroStat label="Transactiekosten" value={totalFees > 0 ? `−${fmtEur(totalFees,{decimals:2})}` : '—'}
             sub={`${state.transactions.length} transacties`} valueColor={totalFees > 0 ? 'var(--negative)' : undefined} />
         </div>
@@ -443,7 +449,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
       {/* Spot rates bar */}
       <div style={{ marginBottom:20, padding:'12px 20px', border:'1px solid var(--border)', borderRadius:'var(--radius)',
-        display:'flex', gap:24, alignItems:'center', fontSize:12, color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', flexWrap:'wrap' }}>
+        display:'flex', gap:16, alignItems:'center', fontSize:12, color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', flexWrap:'wrap' }}>
         <span style={{ color:'var(--fg-dim)', textTransform:'uppercase', letterSpacing:'0.06em', fontSize:10 }}>
           Spot ·{' '}
           {spotStatus?.error ? <span style={{ color:'var(--negative)' }}>offline</span>
@@ -458,7 +464,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
             fontFamily:'inherit', opacity:spotStatus?.loading?0.5:1 }}>
           {spotStatus?.loading ? 'Ophalen…' : '↻ Ververs'}
         </button>
-        <span style={{ marginLeft:'auto', color:'var(--fg-dim)' }}>
+        <span className="spot-bar-source" style={{ marginLeft:'auto', color:'var(--fg-dim)' }}>
           {spotStatus?.fetchedAt
             ? `Bijgewerkt ${new Date(spotStatus.fetchedAt).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})} · gold-api.com`
             : spotStatus?.error ? `⚠ ${spotStatus.error}`
@@ -468,7 +474,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
       {/* Render widget rows */}
       {groupedWidgets.map((row, ri) => (
-        <div key={ri} style={{ display:'grid', gridTemplateColumns:rowTemplate(row), gap:20, marginBottom:20 }}>
+        <div key={ri} className="widget-row" style={{ display:'grid', gridTemplateColumns:rowTemplate(row), gap:20, marginBottom:20 }}>
           {row.map(wCfg => (
             <div key={wCfg.id}>{renderWidget(wCfg)}</div>
           ))}

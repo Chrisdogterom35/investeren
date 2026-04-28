@@ -1,13 +1,16 @@
 // App root: state, theme, tabs, tweaks
 
 const THEMES = [
-  { key: 'minimal',    label: 'Minimalistisch', className: 'theme-minimal'    },
-  { key: 'dark',       label: 'Premium Dark',   className: 'theme-dark'       },
-  { key: 'warm',       label: 'Warm & rustig',  className: 'theme-warm'       },
-  { key: 'terminal',   label: 'Bloomberg',      className: 'theme-terminal'   },
-  { key: 'nord',       label: 'Nord',           className: 'theme-nord'       },
-  { key: 'solarized',  label: 'Solarized',      className: 'theme-solarized'  },
-  { key: 'nebula',     label: 'Nebula',         className: 'theme-nebula'     },
+  { key: 'minimal',     label: 'Minimalistisch', className: 'theme-minimal'     },
+  { key: 'dark',        label: 'Premium Dark',   className: 'theme-dark'        },
+  { key: 'warm',        label: 'Warm & rustig',  className: 'theme-warm'        },
+  { key: 'terminal',    label: 'Bloomberg',      className: 'theme-terminal'    },
+  { key: 'nord',        label: 'Nord',           className: 'theme-nord'        },
+  { key: 'solarized',   label: 'Solarized',      className: 'theme-solarized'   },
+  { key: 'nebula',      label: 'Nebula',         className: 'theme-nebula'      },
+  { key: 'catppuccin',  label: 'Catppuccin',     className: 'theme-catppuccin'  },
+  { key: 'gruvbox',     label: 'Gruvbox',        className: 'theme-gruvbox'     },
+  { key: 'rosepine',    label: 'Rose Pine',      className: 'theme-rosepine'    },
 ];
 
 const TABS = [
@@ -83,12 +86,8 @@ async function fetchMeesmanNav() {
 
 const T212_PROXY = 'https://corsproxy.io/?url=';
 
-// T212 gebruikt alleen de Secret Key in de Authorization header
-function buildT212Auth(keyId, secret) {
-  // Gebruik altijd alleen de Secret Key — nooit combineren
-  const s = (secret || '').trim();
-  const k = (keyId || '').trim();
-  return s || k; // secret heeft prioriteit, keyId als fallback
+function buildT212Auth(secret) {
+  return (secret || '').trim();
 }
 
 async function fetchT212Orders(authHeader, cursor, mode = 'live') {
@@ -206,7 +205,7 @@ function App() {
   }, [updateTweaks]);
 
   const importT212 = React.useCallback(async () => {
-    const auth = buildT212Auth(tweaks.t212KeyId, tweaks.t212ApiKey);
+    const auth = buildT212Auth(tweaks.t212ApiKey);
     if (!auth) return;
     setT212Status({ loading: true, error: null, imported: 0, done: false });
     try {
@@ -316,7 +315,7 @@ function App() {
     <>
       {/* Global nav */}
       <nav style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)', position: 'sticky', top: 0, zIndex: 50 }}>
-        <div style={{ maxWidth: 1360, margin: '0 auto', padding: '0 28px', display: 'flex', alignItems: 'center', gap: 0 }}>
+        <div className="nav-inner" style={{ maxWidth: 1360, margin: '0 auto', padding: '0 28px', display: 'flex', alignItems: 'center', gap: 0 }}>
           {TABS.map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
               style={{
@@ -332,21 +331,29 @@ function App() {
             </button>
           ))}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', marginRight: 4 }}>Thema</span>
-            {THEMES.map(t => (
-              <button key={t.key} onClick={() => updateTweaks(tw => ({ ...tw, theme: t.key }))}
-                title={t.label}
-                style={{
-                  padding: '5px 10px', fontFamily: 'inherit', fontSize: 11,
-                  fontWeight: tweaks.theme === t.key ? 600 : 400,
-                  background: tweaks.theme === t.key ? 'var(--fg)' : 'transparent',
-                  color: tweaks.theme === t.key ? 'var(--bg)' : 'var(--fg-muted)',
-                  border: '1px solid ' + (tweaks.theme === t.key ? 'var(--fg)' : 'var(--border)'),
-                  borderRadius: 'var(--radius)', cursor: 'pointer', transition: 'all .15s', whiteSpace: 'nowrap',
-                }}>
-                {t.label}
-              </button>
-            ))}
+            <span className="nav-theme-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', marginRight: 4 }}>Thema</span>
+            {/* Desktop: individuele knoppen */}
+            <div className="nav-themes-row" style={{ display: 'contents' }}>
+              {THEMES.map(t => (
+                <button key={t.key} onClick={() => updateTweaks(tw => ({ ...tw, theme: t.key }))}
+                  title={t.label}
+                  style={{
+                    padding: '5px 10px', fontFamily: 'inherit', fontSize: 11,
+                    fontWeight: tweaks.theme === t.key ? 600 : 400,
+                    background: tweaks.theme === t.key ? 'var(--fg)' : 'transparent',
+                    color: tweaks.theme === t.key ? 'var(--bg)' : 'var(--fg-muted)',
+                    border: '1px solid ' + (tweaks.theme === t.key ? 'var(--fg)' : 'var(--border)'),
+                    borderRadius: 'var(--radius)', cursor: 'pointer', transition: 'all .15s', whiteSpace: 'nowrap',
+                  }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {/* Mobiel: select dropdown */}
+            <select className="nav-theme-select" value={tweaks.theme}
+              onChange={e => updateTweaks(tw => ({ ...tw, theme: e.target.value }))}>
+              {THEMES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+            </select>
             <button onClick={() => setTweaksOpen(o => !o)} title="Instellingen"
               style={{
                 marginLeft: 8, padding: '5px 10px', fontFamily: 'inherit', fontSize: 15,
@@ -405,10 +412,10 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
     </label>
   );
 
-  const hasT212Auth = !!(tweaks.t212KeyId || tweaks.t212ApiKey);
+  const hasT212Auth = !!(tweaks.t212ApiKey || '').trim();
 
   return (
-    <div style={{ position:'fixed', bottom:20, right:20, width:320,
+    <div className="tweaks-panel" style={{ position:'fixed', bottom:20, right:20, width:320,
       background:'var(--surface)', border:'1px solid var(--border-strong)',
       borderRadius:'var(--radius-lg)', boxShadow:'0 20px 40px rgba(0,0,0,0.25)', zIndex:90, overflow:'hidden' }}>
 
