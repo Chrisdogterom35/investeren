@@ -39,10 +39,13 @@ function loadGistConfig() {
   catch { return { pat: '', gistId: '' }; }
 }
 
+function gistHeaders(pat) {
+  return { Authorization: `Bearer ${pat.trim()}`, 'X-GitHub-Api-Version': '2022-11-28' };
+}
+
 async function gistLoad(pat, gistId) {
-  const res = await fetch(`${GIST_API}/${gistId}`, {
-    headers: { Authorization: `token ${pat}` },
-  });
+  const res = await fetch(`${GIST_API}/${gistId}`, { headers: gistHeaders(pat) });
+  if (res.status === 401) throw new Error('401 — Ongeldig token. Gebruik een classic PAT (ghp_…) met "gist" scope.');
   if (!res.ok) throw new Error(`Laden mislukt (HTTP ${res.status})`);
   const data = await res.json();
   const content = data.files?.['portfolio.json']?.content;
@@ -53,22 +56,24 @@ async function gistLoad(pat, gistId) {
 async function gistSave(pat, gistId, payload) {
   const res = await fetch(`${GIST_API}/${gistId}`, {
     method: 'PATCH',
-    headers: { Authorization: `token ${pat}`, 'Content-Type': 'application/json' },
+    headers: { ...gistHeaders(pat), 'Content-Type': 'application/json' },
     body: JSON.stringify({ files: { 'portfolio.json': { content: JSON.stringify(payload) } } }),
   });
+  if (res.status === 401) throw new Error('401 — Ongeldig token. Gebruik een classic PAT (ghp_…) met "gist" scope.');
   if (!res.ok) throw new Error(`Opslaan mislukt (HTTP ${res.status})`);
 }
 
 async function gistCreate(pat) {
   const res = await fetch(GIST_API, {
     method: 'POST',
-    headers: { Authorization: `token ${pat}`, 'Content-Type': 'application/json' },
+    headers: { ...gistHeaders(pat), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       description: 'Investeringen Dashboard',
       public: false,
       files: { 'portfolio.json': { content: '{}' } },
     }),
   });
+  if (res.status === 401) throw new Error('401 — Ongeldig token. Gebruik een classic PAT (ghp_…) met "gist" scope.');
   if (!res.ok) throw new Error(`Aanmaken mislukt (HTTP ${res.status})`);
   return (await res.json()).id;
 }
