@@ -191,6 +191,16 @@ function App() {
   const [gistConfig, setGistConfig] = React.useState(loadGistConfig);
   const [syncStatus, setSyncStatus] = React.useState({ loading: false, error: null, syncedAt: null });
   const syncTimerRef = React.useRef(null);
+  const [isMobile, setIsMobile] = React.useState(() => window.matchMedia('(max-width: 767px)').matches);
+  const [mobileTab, setMobileTab] = React.useState('home');
+  const [mobileAddTrigger, setMobileAddTrigger] = React.useState(0);
+
+  React.useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const h = e => setIsMobile(e.matches);
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, []);
 
   // Persist state to localStorage
   React.useEffect(() => { saveState(state); }, [state]);
@@ -441,20 +451,23 @@ function App() {
       {/* Global nav */}
       <nav style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)', position: 'sticky', top: 0, zIndex: 50 }}>
         <div className="nav-inner" style={{ maxWidth: 1360, margin: '0 auto', padding: '0 28px', display: 'flex', alignItems: 'center', gap: 0 }}>
-          {TABS.map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-              style={{
-                padding: '14px 18px', fontFamily: 'inherit', fontSize: 14,
-                fontWeight: activeTab === tab.key ? 600 : 400,
-                color: activeTab === tab.key ? 'var(--fg)' : 'var(--fg-muted)',
-                background: 'transparent', border: 'none',
-                borderBottom: activeTab === tab.key ? '2px solid var(--fg)' : '2px solid transparent',
-                cursor: 'pointer', letterSpacing: '-0.01em',
-                transition: 'color .15s, border-color .15s', marginBottom: -1,
-              }}>
-              {tab.label}
-            </button>
-          ))}
+          <span className="nav-mobile-brand" style={{ display: 'none' }}>Investeringen</span>
+          <div className="nav-tab-btns" style={{ display: 'flex' }}>
+            {TABS.map(tab => (
+              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                style={{
+                  padding: '14px 18px', fontFamily: 'inherit', fontSize: 14,
+                  fontWeight: activeTab === tab.key ? 600 : 400,
+                  color: activeTab === tab.key ? 'var(--fg)' : 'var(--fg-muted)',
+                  background: 'transparent', border: 'none',
+                  borderBottom: activeTab === tab.key ? '2px solid var(--fg)' : '2px solid transparent',
+                  cursor: 'pointer', letterSpacing: '-0.01em',
+                  transition: 'color .15s, border-color .15s', marginBottom: -1,
+                }}>
+                {tab.label}
+              </button>
+            ))}
+          </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span className="nav-theme-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', marginRight: 4 }}>Thema</span>
             <div className="nav-themes-row" style={{ display: 'contents' }}>
@@ -498,18 +511,50 @@ function App() {
         </div>
       </nav>
 
-      {activeTab === 'dashboard' && (
-        <Dashboard
-          state={state} setState={setState}
-          tweaks={tweaks} setTweaks={updateTweaks}
-          spotStatus={spotStatus} onRefreshSpot={refreshSpot}
+      {isMobile ? (
+        <>
+          {mobileTab === 'home' && (
+            <Dashboard state={state} setState={setState}
+              tweaks={tweaks} setTweaks={updateTweaks}
+              spotStatus={spotStatus} onRefreshSpot={refreshSpot}
+              addTrigger={mobileAddTrigger} />
+          )}
+          {mobileTab === 'partijen' && (
+            <MobilePartijenView summaries={summaries} spots={spots}
+              tileMetrics={state.tileMetrics || {}}
+              onSetTileMetric={(id, m) => setState(s => ({ ...s, tileMetrics: { ...(s.tileMetrics || {}), [id]: m } }))}
+              onQuickAdd={() => { setMobileTab('home'); setMobileAddTrigger(t => t + 1); }}
+              onCardClick={() => setMobileTab('home')}
+            />
+          )}
+          {mobileTab === 'transacties' && (
+            <TransactionsTab state={state} setState={setState} spots={spots} />
+          )}
+        </>
+      ) : (
+        <>
+          {activeTab === 'dashboard' && (
+            <Dashboard state={state} setState={setState}
+              tweaks={tweaks} setTweaks={updateTweaks}
+              spotStatus={spotStatus} onRefreshSpot={refreshSpot} />
+          )}
+          {activeTab === 'transacties' && (
+            <TransactionsTab state={state} setState={setState} spots={spots} />
+          )}
+          {activeTab === 'pensioen' && (
+            <PensionTab summaries={summaries} />
+          )}
+        </>
+      )}
+
+      {isMobile && (
+        <MobileNav
+          tab={mobileTab}
+          onTab={setMobileTab}
+          onAdd={() => { setMobileTab('home'); setMobileAddTrigger(t => t + 1); }}
+          onSettings={() => setTweaksOpen(o => !o)}
+          tweaksOpen={tweaksOpen}
         />
-      )}
-      {activeTab === 'transacties' && (
-        <TransactionsTab state={state} setState={setState} spots={spots} />
-      )}
-      {activeTab === 'pensioen' && (
-        <PensionTab summaries={summaries} />
       )}
 
       {tweaksOpen && (
@@ -759,6 +804,81 @@ function SectionLabel({ children, style }) {
     <div style={{ fontSize:10, fontWeight:600, color:'var(--fg-muted)', textTransform:'uppercase',
       letterSpacing:'0.08em', ...style }}>
       {children}
+    </div>
+  );
+}
+
+function MobileNav({ tab, onTab, onAdd, onSettings, tweaksOpen }) {
+  const active = key => tab === key;
+
+  const HomeIcon = () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12L12 3l9 9"/><path d="M5 10v9a1 1 0 001 1h4v-5h4v5h4a1 1 0 001-1v-9"/>
+    </svg>
+  );
+  const GridIcon = () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+    </svg>
+  );
+  const GearIcon = () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+    </svg>
+  );
+  const ListIcon = () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <line x1="9" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="9" y1="18" x2="21" y2="18"/>
+      <circle cx="3.5" cy="6" r="1" fill="currentColor" stroke="none"/>
+      <circle cx="3.5" cy="12" r="1" fill="currentColor" stroke="none"/>
+      <circle cx="3.5" cy="18" r="1" fill="currentColor" stroke="none"/>
+    </svg>
+  );
+
+  return (
+    <div className="mob-nav">
+      <button className={`mob-nav-btn${active('home') ? ' mob-active' : ''}`} onClick={() => onTab('home')}>
+        <HomeIcon /><span>Home</span>
+      </button>
+      <button className={`mob-nav-btn${active('partijen') ? ' mob-active' : ''}`} onClick={() => onTab('partijen')}>
+        <GridIcon /><span>Partijen</span>
+      </button>
+      <div className="mob-nav-plus-wrap">
+        <button className="mob-nav-plus" onClick={onAdd}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+      </div>
+      <button className={`mob-nav-btn${tweaksOpen ? ' mob-active' : ''}`} onClick={onSettings}>
+        <GearIcon /><span>Instellingen</span>
+      </button>
+      <button className={`mob-nav-btn${active('transacties') ? ' mob-active' : ''}`} onClick={() => onTab('transacties')}>
+        <ListIcon /><span>Transacties</span>
+      </button>
+    </div>
+  );
+}
+
+function MobilePartijenView({ summaries, spots, tileMetrics, onSetTileMetric, onQuickAdd, onCardClick }) {
+  const total = summaries.reduce((s, x) => s + x.currentValueEur, 0);
+  return (
+    <div style={{ padding: '20px 14px 90px' }}>
+      <h2 style={{ margin: '0 0 16px', fontFamily: 'var(--ff-display)', fontSize: 28, fontWeight: 500, letterSpacing: '-0.015em' }}>
+        Partijen
+      </h2>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        {summaries.map(s => (
+          <PartyCard key={s.party.id} summary={s} total={total} spots={spots}
+            metric={tileMetrics[s.party.id] || 'pnl_eur'}
+            onMetricChange={m => onSetTileMetric(s.party.id, m)}
+            onClick={onCardClick}
+            onQuickAdd={onQuickAdd}
+          />
+        ))}
+      </div>
     </div>
   );
 }

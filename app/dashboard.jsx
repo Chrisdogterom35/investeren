@@ -10,7 +10,7 @@ const TILE_METRICS = [
   { key: 'share',     label: 'Aandeel portfolio', short: 'share' },
 ];
 
-function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSpot }) {
+function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSpot, addTrigger = 0 }) {
   const [modalOpen, setModalOpen]               = React.useState(false);
   const [modalPreset, setModalPreset]           = React.useState(null);
   const [editingTx, setEditingTx]               = React.useState(null);
@@ -90,6 +90,8 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
   const openAdd  = (preset = null) => { setModalPreset(preset); setEditingTx(null); setModalOpen(true); };
   const openEdit = (tx)            => { setEditingTx(tx); setModalPreset(null); setModalOpen(true); };
+
+  React.useEffect(() => { if (addTrigger > 0) openAdd(); }, [addTrigger]);
   const saveTx   = (tx) => setState(s => {
     const exists = s.transactions.some(t => t.id === tx.id);
     return { ...s, transactions: exists ? s.transactions.map(t => t.id === tx.id ? tx : t) : [...s.transactions, tx] };
