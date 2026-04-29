@@ -28,9 +28,16 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     paxgSpotEur:           tweaks.paxgSpotEur,
     meesmanNavEur:         tweaks.meesmanNavEur,
     meesmanNavHistory:     tweaks.meesmanNavHistory,
+    goldHistory:           state.goldHistory   || [],
+    silverHistory:         state.silverHistory || [],
+    btcHistory:            state.btcHistory    || [],
+    ethHistory:            state.ethHistory    || [],
+    paxgHistory:           state.paxgHistory   || [],
   }), [tweaks.goldSpotEurPerGram, tweaks.silverSpotEurPerOunce,
        tweaks.btcSpotEur, tweaks.ethSpotEur, tweaks.paxgSpotEur,
-       tweaks.meesmanNavEur, tweaks.meesmanNavHistory]);
+       tweaks.meesmanNavEur, tweaks.meesmanNavHistory,
+       state.goldHistory, state.silverHistory,
+       state.btcHistory, state.ethHistory, state.paxgHistory]);
 
   // Merge built-in + custom parties
   const allParties = React.useMemo(

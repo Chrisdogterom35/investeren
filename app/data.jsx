@@ -428,14 +428,19 @@ function buildPartyTimeSeries(transactions, parties, spots) {
       ti++;
     }
 
+    const CRYPTO_HIST_KEY = { btcSpotEur: 'btcHistory', ethSpotEur: 'ethHistory', paxgSpotEur: 'paxgHistory' };
     let tot = 0, inv = 0;
     for (const p of parties) {
       const s = state[p.id];
       let v;
       if (p.isMixed) {
-        v = s.goldQty * (spots.goldSpotEurPerGram||0) + s.silverQty * (spots.silverSpotEurPerOunce||0);
+        const goldPx = (spots.goldHistory?.length ? findNavForDate(spots.goldHistory, iso) : null) ?? (spots.goldSpotEurPerGram||0);
+        const silvPx = (spots.silverHistory?.length ? findNavForDate(spots.silverHistory, iso) : null) ?? (spots.silverSpotEurPerOunce||0);
+        v = s.goldQty * goldPx + s.silverQty * silvPx;
       } else if (p.unit === 'crypto') {
-        v = s.qty * (spots[p.spotKey] || 0);
+        const histKey = CRYPTO_HIST_KEY[p.spotKey];
+        const histPx = histKey && spots[histKey]?.length ? findNavForDate(spots[histKey], iso) : null;
+        v = s.qty * (histPx ?? spots[p.spotKey] ?? 0);
       } else if (p.unit === 'bundle') {
         // Tijdelijk: toon ingelegd bedrag; winst wordt na de loop lineair verspreid
         v = s.cost;
@@ -448,7 +453,8 @@ function buildPartyTimeSeries(transactions, parties, spots) {
           const histNav = findNavForDate(spots.meesmanNavHistory, iso);
           if (histNav != null) px = histNav;
         }
-        if (px == null && (p.unit === 'gram' || p.unit === 'ounce')) px = spotEurForParty(p, spots);
+        if (px == null && p.unit === 'gram')  px = (spots.goldHistory?.length   ? findNavForDate(spots.goldHistory,   iso) : null) ?? spotEurForParty(p, spots);
+        if (px == null && p.unit === 'ounce') px = (spots.silverHistory?.length ? findNavForDate(spots.silverHistory, iso) : null) ?? spotEurForParty(p, spots);
         if (px == null) px = spotEurForParty(p, spots); // meesman live NAV als fallback
         if (px == null && s.qty > 0) px = s.cost / s.qty;
         v = (px || 0) * s.qty;

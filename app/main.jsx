@@ -1,4 +1,4 @@
-// App root: state, theme, tabs, tweaks
+// App root: state, theme, tabs, tweaks, gist sync, price history
 
 const THEMES = [
   { key: 'minimal',     label: 'Minimalistisch', className: 'theme-minimal'     },
@@ -19,8 +19,61 @@ const TABS = [
   { key: 'pensioen',     label: 'Pensioen' },
 ];
 
-const OZ_TO_GRAM = 31.1034768;
+const OZ_TO_GRAM     = 31.1034768;
+const T212_PROXY     = 'https://corsproxy.io/?url=';
+const GIST_API       = 'https://api.github.com/gists';
+const GIST_CFG_KEY   = 'investeringen-gist-v1';
 
+// ── Price history helper ──────────────────────────────────────
+function appendToHistory(existing, date, price) {
+  if (!price) return existing || [];
+  const arr = (existing || []).filter(h => h.date !== date);
+  arr.push({ date, nav: +price });
+  arr.sort((a, b) => a.date.localeCompare(b.date));
+  return arr.slice(-1095); // 3 jaar max
+}
+
+// ── GitHub Gist helpers ───────────────────────────────────────
+function loadGistConfig() {
+  try { return JSON.parse(localStorage.getItem(GIST_CFG_KEY)) || { pat: '', gistId: '' }; }
+  catch { return { pat: '', gistId: '' }; }
+}
+
+async function gistLoad(pat, gistId) {
+  const res = await fetch(`${GIST_API}/${gistId}`, {
+    headers: { Authorization: `token ${pat}` },
+  });
+  if (!res.ok) throw new Error(`Laden mislukt (HTTP ${res.status})`);
+  const data = await res.json();
+  const content = data.files?.['portfolio.json']?.content;
+  if (!content) throw new Error('portfolio.json niet gevonden in gist');
+  return JSON.parse(content);
+}
+
+async function gistSave(pat, gistId, payload) {
+  const res = await fetch(`${GIST_API}/${gistId}`, {
+    method: 'PATCH',
+    headers: { Authorization: `token ${pat}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files: { 'portfolio.json': { content: JSON.stringify(payload) } } }),
+  });
+  if (!res.ok) throw new Error(`Opslaan mislukt (HTTP ${res.status})`);
+}
+
+async function gistCreate(pat) {
+  const res = await fetch(GIST_API, {
+    method: 'POST',
+    headers: { Authorization: `token ${pat}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      description: 'Investeringen Dashboard',
+      public: false,
+      files: { 'portfolio.json': { content: '{}' } },
+    }),
+  });
+  if (!res.ok) throw new Error(`Aanmaken mislukt (HTTP ${res.status})`);
+  return (await res.json()).id;
+}
+
+// ── Spot price fetchers ───────────────────────────────────────
 async function fetchSpotPrices() {
   const [goldRes, silverRes, fxRes] = await Promise.all([
     fetch('https://api.gold-api.com/price/XAU').then(r => r.json()),
@@ -49,92 +102,79 @@ async function fetchCryptoPrices() {
   };
 }
 
+// Haal 1 jaar dagelijkse crypto-prijzen op (vul history bij eerste gebruik)
+async function fetchCryptoHistory() {
+  const toDays = prices => prices
+    .map(([ts, p]) => ({ date: new Date(ts).toISOString().slice(0, 10), nav: +p.toFixed(2) }))
+    .filter((h, i, arr) => i === 0 || h.date !== arr[i - 1].date);
+
+  const [btc, eth, paxg] = await Promise.all([
+    fetch('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=eur&days=365&interval=daily').then(r => r.json()),
+    fetch('https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=eur&days=365&interval=daily').then(r => r.json()),
+    fetch('https://api.coingecko.com/api/v3/coins/pax-gold/market_chart?vs_currency=eur&days=365&interval=daily').then(r => r.json()),
+  ]);
+  return {
+    btcHistory:  toDays(btc.prices  || []),
+    ethHistory:  toDays(eth.prices  || []),
+    paxgHistory: toDays(paxg.prices || []),
+  };
+}
+
 async function fetchMeesmanNav() {
   const end   = new Date().toISOString().slice(0, 10);
   const start = new Date(Date.now() - 730 * 86400000).toISOString().slice(0, 10);
   const id    = '0P0001IJJX%24%242%24%241';
   const qs    = `id=${id}&currencyId=EUR&idtype=Morningstar&frequency=daily&startDate=${start}&endDate=${end}&outputType=COMPACTJSON`;
-
-  // Probeer meerdere Morningstar-regio's via de CORS proxy
-  const hosts = [
-    'tools.morningstar.nl',
-    'tools.morningstar.be',
-    'lt.morningstar.com',
-    'tools.morningstar.co.uk',
-  ];
+  const hosts = ['tools.morningstar.nl', 'tools.morningstar.be', 'lt.morningstar.com', 'tools.morningstar.co.uk'];
   const token = 't92wz0sj7c';
-
   for (const host of hosts) {
     try {
       const endpoint = `https://${host}/api/rest.svc/timeseries_price/${token}?${qs}`;
-      const proxied  = T212_PROXY + encodeURIComponent(endpoint);
-      const res  = await fetch(proxied).then(r => r.json());
-      const security = res?.TimeSeries?.Security?.[0];
-      const history  = security?.HistoryDetail || [];
-      if (!history.length) continue; // probeer volgende host
+      const res = await fetch(T212_PROXY + encodeURIComponent(endpoint)).then(r => r.json());
+      const history = res?.TimeSeries?.Security?.[0]?.HistoryDetail || [];
+      if (!history.length) continue;
       const navHistory = history
         .map(h => ({ date: h.EndDate.slice(0, 10), nav: +h.Value }))
         .sort((a, b) => a.date.localeCompare(b.date));
-      const latest = navHistory[navHistory.length - 1];
-      return { meesmanNavEur: latest.nav, meesmanNavHistory: navHistory };
-    } catch (_) {
-      // host mislukt — probeer volgende
-    }
+      return { meesmanNavEur: navHistory[navHistory.length - 1].nav, meesmanNavHistory: navHistory };
+    } catch (_) {}
   }
   throw new Error('Geen NAV-data ontvangen (alle Morningstar-endpoints geprobeerd)');
 }
 
-const T212_PROXY = 'https://corsproxy.io/?url=';
-
-function buildT212Auth(secret) {
-  return (secret || '').trim();
-}
+function buildT212Auth(secret) { return (secret || '').trim(); }
 
 async function fetchT212Orders(authHeader, cursor, mode = 'live') {
   const host = mode === 'demo' ? 'demo.trading212.com' : 'live.trading212.com';
   const base = cursor
     ? `https://${host}/api/v0/equity/history/orders?cursor=${encodeURIComponent(cursor)}&limit=50`
     : `https://${host}/api/v0/equity/history/orders?limit=50`;
-  const url = T212_PROXY + encodeURIComponent(base);
   let res;
-  try {
-    res = await fetch(url, { headers: { 'Authorization': authHeader } });
-  } catch (e) {
-    throw new Error('Netwerkfout — controleer je verbinding of probeer opnieuw');
-  }
-  if (res.status === 401) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`401 — ${body || 'ongeldige sleutel'}`);
-  }
+  try { res = await fetch(T212_PROXY + encodeURIComponent(base), { headers: { Authorization: authHeader } }); }
+  catch { throw new Error('Netwerkfout — controleer je verbinding'); }
+  if (res.status === 401) { const b = await res.text().catch(() => ''); throw new Error(`401 — ${b || 'ongeldige sleutel'}`); }
   if (res.status === 403) throw new Error('Geen toegang (403) — sleutel heeft mogelijk onvoldoende rechten');
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`T212 fout HTTP ${res.status}: ${body || 'onbekend'}`);
-  }
-  return await res.json();
+  if (!res.ok) { const b = await res.text().catch(() => ''); throw new Error(`T212 HTTP ${res.status}: ${b || 'onbekend'}`); }
+  return res.json();
 }
 
 function mapT212Order(order) {
-  const typeMap = { LIMIT_BUY: 'koop', MARKET_BUY: 'koop', LIMIT_SELL: 'verkoop', MARKET_SELL: 'verkoop',
-                    STOP_BUY: 'koop', STOP_SELL: 'verkoop' };
-  const qty   = +(order.filledQuantity  || order.orderedQuantity || 0);
-  const price = +(order.filledPrice     || (qty > 0 ? (order.filledValue / qty) : 0) || 0);
+  const typeMap = { LIMIT_BUY:'koop', MARKET_BUY:'koop', LIMIT_SELL:'verkoop', MARKET_SELL:'verkoop', STOP_BUY:'koop', STOP_SELL:'verkoop' };
+  const qty   = +(order.filledQuantity || order.orderedQuantity || 0);
+  const price = +(order.filledPrice || (qty > 0 ? (order.filledValue / qty) : 0) || 0);
   const fee   = (order.taxes || []).reduce((s, t) => s + +(t.quantity || 0), 0);
   const ticker = (order.ticker || '').replace(/_[A-Z0-9]+$/, '');
   return {
-    id:           makeId(),
-    party:        'trading212',
-    type:         typeMap[order.type] || 'koop',
-    date:         (order.dateCreated || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
-    quantity:     qty,
-    unitPriceEur: +price.toFixed(4),
-    feeEur:       fee > 0 ? +fee.toFixed(4) : undefined,
-    instrument:   ticker,
-    note:         `T212:${order.id || ''}`,
-    _t212Id:      String(order.id || ''),
+    id: makeId(), party: 'trading212',
+    type: typeMap[order.type] || 'koop',
+    date: (order.dateCreated || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+    quantity: qty, unitPriceEur: +price.toFixed(4),
+    feeEur: fee > 0 ? +fee.toFixed(4) : undefined,
+    instrument: ticker, note: `T212:${order.id || ''}`, _t212Id: String(order.id || ''),
   };
 }
 
+// ─────────────────────────────────────────────────────────────
 function App() {
   const [state, setState]           = React.useState(() => loadState());
   const [tweaks, setTweaks]         = React.useState(() => ({ ...window.TWEAKS }));
@@ -142,9 +182,49 @@ function App() {
   const [activeTab, setActiveTab]   = React.useState('dashboard');
   const [spotStatus, setSpotStatus] = React.useState({ loading: false, error: null, fetchedAt: null });
   const [t212Status, setT212Status] = React.useState({ loading: false, error: null, imported: 0, done: false });
-  const [importMsg, setImportMsg]   = React.useState(null); // { ok, text }
+  const [importMsg, setImportMsg]   = React.useState(null);
+  const [gistConfig, setGistConfig] = React.useState(loadGistConfig);
+  const [syncStatus, setSyncStatus] = React.useState({ loading: false, error: null, syncedAt: null });
+  const syncTimerRef = React.useRef(null);
 
+  // Persist state to localStorage
   React.useEffect(() => { saveState(state); }, [state]);
+
+  // Persist gist config to localStorage (PAT nooit in HTML)
+  React.useEffect(() => {
+    try { localStorage.setItem(GIST_CFG_KEY, JSON.stringify(gistConfig)); } catch {}
+  }, [gistConfig]);
+
+  // Laad data van gist bij opstarten
+  React.useEffect(() => {
+    if (!gistConfig.pat || !gistConfig.gistId) return;
+    setSyncStatus({ loading: true, error: null, syncedAt: null });
+    gistLoad(gistConfig.pat, gistConfig.gistId)
+      .then(data => {
+        if (data?.transactions) setState(data);
+        setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
+      })
+      .catch(e => setSyncStatus({ loading: false, error: e.message, syncedAt: null }));
+  }, []); // eenmalig bij mount
+
+  // Haal 1 jaar crypto-geschiedenis op als de history leeg is
+  React.useEffect(() => {
+    if ((state.btcHistory || []).length > 10) return;
+    fetchCryptoHistory()
+      .then(h => setState(s => ({ ...s, ...h })))
+      .catch(() => {});
+  }, []); // eenmalig bij mount
+
+  // Automatisch opslaan in gist 3 seconden na elke state-wijziging
+  React.useEffect(() => {
+    if (!gistConfig.pat || !gistConfig.gistId) return;
+    clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      gistSave(gistConfig.pat, gistConfig.gistId, state)
+        .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
+        .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
+    }, 3000);
+  }, [state]); // eslint-disable-line
 
   // Apply theme class to <html>
   React.useEffect(() => {
@@ -169,7 +249,7 @@ function App() {
   const updateTweaks = React.useCallback(updater => {
     setTweaks(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits: next }, '*'); } catch (e) {}
+      try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits: next }, '*'); } catch {}
       return next;
     });
   }, []);
@@ -196,6 +276,23 @@ function App() {
       updates.meesmanNavHistory = meesman.value.meesmanNavHistory;
     }
     if (Object.keys(updates).length) updateTweaks(tw => ({ ...tw, ...updates }));
+
+    // Sla dagelijkse spot-prijzen op in state (persistent via localStorage + gist)
+    const today = new Date().toISOString().slice(0, 10);
+    setState(s => {
+      const hist = {};
+      if (metals.status === 'fulfilled') {
+        hist.goldHistory   = appendToHistory(s.goldHistory,   today, updates.goldSpotEurPerGram);
+        hist.silverHistory = appendToHistory(s.silverHistory, today, updates.silverSpotEurPerOunce);
+      }
+      if (crypto.status === 'fulfilled') {
+        hist.btcHistory  = appendToHistory(s.btcHistory,  today, updates.btcSpotEur);
+        hist.ethHistory  = appendToHistory(s.ethHistory,  today, updates.ethSpotEur);
+        hist.paxgHistory = appendToHistory(s.paxgHistory, today, updates.paxgSpotEur);
+      }
+      return Object.keys(hist).length ? { ...s, ...hist } : s;
+    });
+
     const errors = [
       metals.status  === 'rejected' ? `Goud/zilver: ${metals.reason?.message}`  : null,
       crypto.status  === 'rejected' ? `Crypto: ${crypto.reason?.message}`        : null,
@@ -211,26 +308,22 @@ function App() {
     try {
       const data = await fetchT212Orders(auth, null, tweaks.t212Mode || 'live');
       const items = Array.isArray(data) ? data : (data.items || []);
-      const existingIds = new Set(
-        state.transactions.filter(t => t._t212Id).map(t => t._t212Id)
-      );
+      const existingIds = new Set(state.transactions.filter(t => t._t212Id).map(t => t._t212Id));
       const newTxs = items
         .filter(o => {
           if (existingIds.has(String(o.id || ''))) return false;
-          if (o.status && o.status !== 'FILLED') return false; // sla niet-gevulde orders over
+          if (o.status && o.status !== 'FILLED') return false;
           const qty = +(o.filledQuantity || o.orderedQuantity || 0);
-          const price = +(o.filledPrice || 0) || (qty > 0 ? (+(o.filledValue||0) / qty) : 0);
-          return qty > 0 && price > 0; // sla lege orders over
+          const price = +(o.filledPrice || 0) || (qty > 0 ? (+(o.filledValue || 0) / qty) : 0);
+          return qty > 0 && price > 0;
         })
         .map(mapT212Order);
-      if (newTxs.length > 0) {
-        setState(s => ({ ...s, transactions: [...s.transactions, ...newTxs] }));
-      }
+      if (newTxs.length > 0) setState(s => ({ ...s, transactions: [...s.transactions, ...newTxs] }));
       setT212Status({ loading: false, error: null, imported: newTxs.length, done: true });
     } catch (e) {
       setT212Status({ loading: false, error: e.message || 'Importfout', imported: 0, done: false });
     }
-  }, [tweaks.t212KeyId, tweaks.t212ApiKey, state.transactions]);
+  }, [tweaks.t212ApiKey, tweaks.t212Mode, state.transactions]);
 
   React.useEffect(() => {
     refreshSpot();
@@ -251,21 +344,42 @@ function App() {
     setT212Status({ loading: false, error: null, imported: 0, done: false });
   }, [state.transactions]);
 
-  // ── Export: download state als JSON-bestand ──
+  // Maak nieuwe gist aan en sla huidige data op
+  const createGistAndSave = React.useCallback(async () => {
+    if (!gistConfig.pat) return;
+    setSyncStatus({ loading: true, error: null, syncedAt: null });
+    try {
+      const id = await gistCreate(gistConfig.pat);
+      const newCfg = { ...gistConfig, gistId: id };
+      setGistConfig(newCfg);
+      await gistSave(gistConfig.pat, id, state);
+      setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
+    } catch (e) {
+      setSyncStatus({ loading: false, error: e.message, syncedAt: null });
+    }
+  }, [gistConfig, state]);
+
+  const syncNow = React.useCallback(async () => {
+    if (!gistConfig.pat || !gistConfig.gistId) return;
+    setSyncStatus({ loading: true, error: null, syncedAt: null });
+    try {
+      await gistSave(gistConfig.pat, gistConfig.gistId, state);
+      setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
+    } catch (e) {
+      setSyncStatus({ loading: false, error: e.message, syncedAt: null });
+    }
+  }, [gistConfig, state]);
+
   const exportData = React.useCallback(() => {
     const json = JSON.stringify(state, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `investeringen-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    a.href = url; a.download = `investeringen-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
   }, [state]);
 
-  // ── Import: laad JSON-bestand en vervang state ──
   const importData = React.useCallback((file) => {
     if (!file) return;
     const reader = new FileReader();
@@ -273,8 +387,7 @@ function App() {
       try {
         const data = JSON.parse(e.target.result);
         if (!data.transactions || !Array.isArray(data.transactions)) {
-          setImportMsg({ ok: false, text: 'Ongeldig bestand — geen transacties gevonden' });
-          return;
+          setImportMsg({ ok: false, text: 'Ongeldig bestand — geen transacties gevonden' }); return;
         }
         if (!data.widgets)       data.widgets       = DEFAULT_WIDGETS.map(w => ({ ...w }));
         if (!data.customParties) data.customParties = [];
@@ -282,14 +395,12 @@ function App() {
         if (!data.tileMetrics)   data.tileMetrics   = {};
         setState(data);
         setImportMsg({ ok: true, text: `${data.transactions.length} transacties geladen` });
-      } catch {
-        setImportMsg({ ok: false, text: 'Kon bestand niet lezen — is het een geldig JSON-bestand?' });
-      }
+      } catch { setImportMsg({ ok: false, text: 'Kon bestand niet lezen — geldig JSON?' }); }
     };
     reader.readAsText(file);
   }, []);
 
-  // Stable spots object
+  // spots: huidige prijzen + historische reeksen (uit state, persistent)
   const spots = React.useMemo(() => ({
     goldSpotEurPerGram:    tweaks.goldSpotEurPerGram,
     silverSpotEurPerOunce: tweaks.silverSpotEurPerOunce,
@@ -298,9 +409,16 @@ function App() {
     paxgSpotEur:           tweaks.paxgSpotEur,
     meesmanNavEur:         tweaks.meesmanNavEur,
     meesmanNavHistory:     tweaks.meesmanNavHistory,
+    goldHistory:           state.goldHistory   || [],
+    silverHistory:         state.silverHistory || [],
+    btcHistory:            state.btcHistory    || [],
+    ethHistory:            state.ethHistory    || [],
+    paxgHistory:           state.paxgHistory   || [],
   }), [tweaks.goldSpotEurPerGram, tweaks.silverSpotEurPerOunce,
        tweaks.btcSpotEur, tweaks.ethSpotEur, tweaks.paxgSpotEur,
-       tweaks.meesmanNavEur, tweaks.meesmanNavHistory]);
+       tweaks.meesmanNavEur, tweaks.meesmanNavHistory,
+       state.goldHistory, state.silverHistory,
+       state.btcHistory, state.ethHistory, state.paxgHistory]);
 
   const allParties = React.useMemo(
     () => [...PARTIES, ...(state.customParties || [])],
@@ -310,6 +428,8 @@ function App() {
     () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
     [state.transactions, spots, allParties]
   );
+
+  const gistOk = !!(gistConfig.pat && gistConfig.gistId);
 
   return (
     <>
@@ -332,7 +452,6 @@ function App() {
           ))}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span className="nav-theme-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', marginRight: 4 }}>Thema</span>
-            {/* Desktop: individuele knoppen */}
             <div className="nav-themes-row" style={{ display: 'contents' }}>
               {THEMES.map(t => (
                 <button key={t.key} onClick={() => updateTweaks(tw => ({ ...tw, theme: t.key }))}
@@ -349,14 +468,20 @@ function App() {
                 </button>
               ))}
             </div>
-            {/* Mobiel: select dropdown */}
             <select className="nav-theme-select" value={tweaks.theme}
               onChange={e => updateTweaks(tw => ({ ...tw, theme: e.target.value }))}>
               {THEMES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
             </select>
+            {/* Sync indicator */}
+            {gistOk && (
+              <span title={syncStatus.error ? syncStatus.error : syncStatus.syncedAt ? 'Gesynchroniseerd' : 'Sync actief'}
+                style={{ fontSize: 14, color: syncStatus.error ? 'var(--negative)' : syncStatus.loading ? 'var(--fg-dim)' : 'var(--positive)', lineHeight: 1 }}>
+                {syncStatus.loading ? '↻' : syncStatus.error ? '⚠' : '●'}
+              </span>
+            )}
             <button onClick={() => setTweaksOpen(o => !o)} title="Instellingen"
               style={{
-                marginLeft: 8, padding: '5px 10px', fontFamily: 'inherit', fontSize: 15,
+                marginLeft: 4, padding: '5px 10px', fontFamily: 'inherit', fontSize: 15,
                 background: tweaksOpen ? 'var(--fg)' : 'transparent',
                 color: tweaksOpen ? 'var(--bg)' : 'var(--fg-muted)',
                 border: '1px solid ' + (tweaksOpen ? 'var(--fg)' : 'var(--border)'),
@@ -389,6 +514,8 @@ function App() {
           onExport={exportData} onImport={importData} importMsg={importMsg}
           spotStatus={spotStatus} onRefreshSpot={refreshSpot}
           t212Status={t212Status} onImportT212={importT212} onDeleteT212={deleteT212Txs}
+          gistConfig={gistConfig} setGistConfig={setGistConfig}
+          syncStatus={syncStatus} onCreateGist={createGistAndSave} onSyncNow={syncNow}
           onClose={() => setTweaksOpen(false)}
         />
       )}
@@ -399,7 +526,8 @@ function App() {
 function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
                        spotStatus, onRefreshSpot,
                        t212Status, onImportT212, onDeleteT212,
-                       onExport, onImport, importMsg }) {
+                       onExport, onImport, importMsg,
+                       gistConfig, setGistConfig, syncStatus, onCreateGist, onSyncNow }) {
 
   const fileRef = React.useRef(null);
 
@@ -413,13 +541,13 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
   );
 
   const hasT212Auth = !!(tweaks.t212ApiKey || '').trim();
+  const gistReady   = !!(gistConfig?.pat && gistConfig?.gistId);
 
   return (
     <div className="tweaks-panel" style={{ position:'fixed', bottom:20, right:20, width:320,
       background:'var(--surface)', border:'1px solid var(--border-strong)',
       borderRadius:'var(--radius-lg)', boxShadow:'0 20px 40px rgba(0,0,0,0.25)', zIndex:90, overflow:'hidden' }}>
 
-      {/* Header */}
       <div style={{ padding:'13px 16px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div style={{ fontFamily:'var(--ff-display)', fontSize:17, fontWeight:500 }}>Instellingen</div>
         <button onClick={onClose} style={{ background:'transparent', border:'none', color:'var(--fg-muted)', fontSize:18, cursor:'pointer', lineHeight:1 }}>×</button>
@@ -427,14 +555,69 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
 
       <div style={{ padding:'14px 16px', display:'grid', gap:16, maxHeight:'80vh', overflowY:'auto' }}>
 
-        {/* ── Live prijzen ── */}
+        {/* ── Cloud sync ── */}
         <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+            <SectionLabel>Cloud sync</SectionLabel>
+            {gistReady && (
+              <button onClick={onSyncNow} disabled={syncStatus?.loading}
+                style={{ background:'transparent', border:'1px solid var(--border)', color:'var(--fg-muted)',
+                  padding:'3px 8px', borderRadius:'var(--radius)', fontSize:10, cursor:'pointer', fontFamily:'inherit' }}>
+                {syncStatus?.loading ? '…' : '↑↓ Nu syncen'}
+              </button>
+            )}
+          </div>
+          <div style={{ display:'grid', gap:8 }}>
+            <label style={{ fontSize:12 }}>
+              <div style={{ color:'var(--fg-muted)', marginBottom:4 }}>
+                GitHub PAT <span style={{ color:'var(--fg-dim)' }}>(gist scope — opgeslagen lokaal)</span>
+              </div>
+              <input type="password" value={gistConfig?.pat || ''}
+                onChange={e => setGistConfig(c => ({...c, pat: e.target.value}))}
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                style={{ ...inputStyle, width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'var(--ff-mono)' }} />
+            </label>
+            <label style={{ fontSize:12 }}>
+              <div style={{ color:'var(--fg-muted)', marginBottom:4 }}>
+                Gist ID <span style={{ color:'var(--fg-dim)' }}>(leeg = nieuw aanmaken)</span>
+              </div>
+              <input value={gistConfig?.gistId || ''}
+                onChange={e => setGistConfig(c => ({...c, gistId: e.target.value}))}
+                placeholder="automatisch na aanmaken"
+                style={{ ...inputStyle, width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'var(--ff-mono)' }} />
+            </label>
+            {gistConfig?.pat && !gistConfig?.gistId && (
+              <button onClick={onCreateGist} disabled={syncStatus?.loading}
+                style={{ padding:'8px 12px', fontSize:12, background:'var(--surface-2)',
+                  border:'1px solid var(--border)', borderRadius:'var(--radius)',
+                  cursor:'pointer', color:'var(--fg)', fontFamily:'inherit' }}>
+                {syncStatus?.loading ? '…bezig' : '✦ Maak nieuwe gist aan'}
+              </button>
+            )}
+            {syncStatus?.error && (
+              <div style={{ fontSize:10, fontFamily:'var(--ff-mono)', color:'var(--negative)' }}>
+                ⚠ {syncStatus.error}
+              </div>
+            )}
+            {syncStatus?.syncedAt && !syncStatus.error && (
+              <div style={{ fontSize:10, fontFamily:'var(--ff-mono)', color:'var(--positive)' }}>
+                ✓ Gesynchroniseerd {new Date(syncStatus.syncedAt).toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'})}
+              </div>
+            )}
+            <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.6 }}>
+              Maak een GitHub PAT aan via <b>github.com → Settings → Developer settings → Personal access tokens</b> met <b>gist</b> scope. Plak hem hier — hij wordt lokaal opgeslagen, nooit in de code. Daarna sync je automatisch op elk apparaat.
+            </div>
+          </div>
+        </div>
+
+        {/* ── Live prijzen ── */}
+        <div style={{ borderTop:'1px solid var(--border)', paddingTop:14 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
             <SectionLabel>Live prijzen</SectionLabel>
             <button onClick={onRefreshSpot} disabled={spotStatus?.loading}
               style={{ background:'transparent', border:'1px solid var(--border)', color:'var(--fg-muted)',
                 padding:'3px 8px', borderRadius:'var(--radius)', fontSize:10, cursor:'pointer', fontFamily:'inherit' }}>
-              {spotStatus?.loading ? '…' : '↻ Alles verversen'}
+              {spotStatus?.loading ? '…' : '↻ Verversen'}
             </button>
           </div>
           <div style={{ display:'grid', gap:7 }}>
@@ -447,10 +630,8 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
           </div>
           <div style={{ fontSize:10, marginTop:7, fontFamily:'var(--ff-mono)',
             color: spotStatus?.error ? 'var(--negative)' : 'var(--fg-dim)' }}>
-            {spotStatus?.error
-              ? '⚠ ' + spotStatus.error
-              : spotStatus?.fetchedAt
-              ? 'Bijgewerkt ' + new Date(spotStatus.fetchedAt).toLocaleTimeString('nl-NL')
+            {spotStatus?.error ? '⚠ ' + spotStatus.error
+              : spotStatus?.fetchedAt ? 'Bijgewerkt ' + new Date(spotStatus.fetchedAt).toLocaleTimeString('nl-NL')
               : spotStatus?.loading ? 'ophalen…' : 'handmatig'}
           </div>
         </div>
@@ -459,8 +640,6 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
         <div style={{ borderTop:'1px solid var(--border)', paddingTop:14 }}>
           <SectionLabel style={{ marginBottom:10 }}>Trading 212 import</SectionLabel>
           <div style={{ display:'grid', gap:8 }}>
-
-            {/* Live / Demo toggle */}
             <div style={{ display:'flex', gap:6 }}>
               {['live','demo'].map(m => (
                 <button key={m} onClick={() => setTweaks(tw => ({...tw, t212Mode: m}))} type="button"
@@ -473,35 +652,29 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
                 </button>
               ))}
             </div>
-
-            {/* API Key */}
             <label style={{ fontSize:12 }}>
-              <div style={{ color:'var(--fg-muted)', marginBottom:4 }}>API Key <span style={{ color:'var(--fg-dim)', fontWeight:400 }}>(T212 → Instellingen → API)</span></div>
+              <div style={{ color:'var(--fg-muted)', marginBottom:4 }}>API Key <span style={{ color:'var(--fg-dim)' }}>(T212 → Instellingen → API)</span></div>
               <input type="password" value={tweaks.t212ApiKey || ''}
                 onChange={e => setTweaks(tw => ({...tw, t212ApiKey: e.target.value}))}
                 placeholder="Plak je T212 API Key..."
                 style={{ ...inputStyle, width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'var(--ff-mono)' }} />
             </label>
-
             <button onClick={onImportT212} disabled={!hasT212Auth || t212Status?.loading}
               style={{ padding:'8px 12px', fontSize:12, background:'var(--surface-2)',
                 border:'1px solid var(--border)', borderRadius:'var(--radius)',
                 cursor: hasT212Auth ? 'pointer' : 'default',
                 color: hasT212Auth ? 'var(--fg)' : 'var(--fg-dim)',
                 fontFamily:'inherit', opacity: hasT212Auth ? 1 : 0.5 }}>
-              {t212Status?.loading ? '…bezig met importeren' : '↓ Importeer transacties'}
+              {t212Status?.loading ? '…bezig' : '↓ Importeer transacties'}
             </button>
-
             {(t212Status?.error || t212Status?.done) && (
               <div style={{ fontSize:10, fontFamily:'var(--ff-mono)',
                 color: t212Status.error ? 'var(--negative)' : 'var(--positive)' }}>
-                {t212Status.error
-                  ? '⚠ ' + t212Status.error
-                  : `✓ ${t212Status.imported} nieuwe transacties geïmporteerd`}
+                {t212Status.error ? '⚠ ' + t212Status.error : `✓ ${t212Status.imported} nieuwe transacties geïmporteerd`}
               </div>
             )}
             <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.5 }}>
-              Genereer een key via T212 app → Instellingen → API. Kopieer de volledige key en plak hem hier. Duplicaten worden automatisch overgeslagen.
+              Genereer een key via T212 → Instellingen → API. Duplicaten worden overgeslagen.
             </div>
             <button onClick={onDeleteT212}
               style={{ padding:'7px 12px', fontSize:11, background:'transparent',
@@ -516,37 +689,28 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
         <div style={{ borderTop:'1px solid var(--border)', paddingTop:14 }}>
           <SectionLabel style={{ marginBottom:10 }}>Data opslaan</SectionLabel>
           <div style={{ display:'grid', gap:8 }}>
-            {/* Export */}
             <button onClick={onExport}
               style={{ padding:'8px 12px', fontSize:12, background:'var(--surface-2)',
                 border:'1px solid var(--border)', borderRadius:'var(--radius)',
                 cursor:'pointer', color:'var(--fg)', fontFamily:'inherit', textAlign:'left' }}>
               ↓ Exporteer data als JSON
             </button>
-
-            {/* Import */}
-            <input
-              ref={fileRef}
-              type="file" accept=".json"
-              style={{ display:'none' }}
-              onChange={e => { onImport(e.target.files?.[0]); e.target.value = ''; }}
-            />
+            <input ref={fileRef} type="file" accept=".json" style={{ display:'none' }}
+              onChange={e => { onImport(e.target.files?.[0]); e.target.value = ''; }} />
             <button onClick={() => fileRef.current?.click()}
               style={{ padding:'8px 12px', fontSize:12, background:'var(--surface-2)',
                 border:'1px solid var(--border)', borderRadius:'var(--radius)',
                 cursor:'pointer', color:'var(--fg)', fontFamily:'inherit', textAlign:'left' }}>
               ↑ Importeer data uit JSON
             </button>
-
             {importMsg && (
               <div style={{ fontSize:10, fontFamily:'var(--ff-mono)',
                 color: importMsg.ok ? 'var(--positive)' : 'var(--negative)' }}>
                 {importMsg.ok ? '✓ ' : '⚠ '}{importMsg.text}
               </div>
             )}
-
             <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.5 }}>
-              Data wordt automatisch opgeslagen in je browser. Exporteer regelmatig als backup, of om te verplaatsen naar een ander apparaat.
+              Data wordt automatisch opgeslagen in je browser. Exporteer als backup of voor overdracht naar ander apparaat.
             </div>
           </div>
         </div>
