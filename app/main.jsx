@@ -210,6 +210,16 @@ function App() {
     try { localStorage.setItem(GIST_CFG_KEY, JSON.stringify(gistConfig)); } catch {}
   }, [gistConfig]);
 
+  // Lees Gist ID uit URL-hash (#gist=<id>) — handig voor setup op nieuw apparaat/beginscherm
+  React.useEffect(() => {
+    const m = window.location.hash.match(/[#&]gist=([a-zA-Z0-9]+)/);
+    if (m) {
+      setGistConfig(c => ({ ...c, gistId: c.gistId || m[1] }));
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+      setTweaksOpen(true); // open instellingen zodat gebruiker PAT kan invullen
+    }
+  }, []);
+
   // Laad data van gist bij opstarten
   React.useEffect(() => {
     if (!gistConfig.pat || !gistConfig.gistId) return;
@@ -592,6 +602,17 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
 
   const hasT212Auth = !!(tweaks.t212ApiKey || '').trim();
   const gistReady   = !!(gistConfig?.pat && gistConfig?.gistId);
+  const [copyDone, setCopyDone] = React.useState(false);
+
+  const copyShareUrl = () => {
+    const url = `${location.origin}${location.pathname}#gist=${gistConfig.gistId}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopyDone(true);
+      setTimeout(() => setCopyDone(false), 2500);
+    }).catch(() => {
+      prompt('Kopieer deze link:', url);
+    });
+  };
 
   return (
     <div className="tweaks-panel" style={{ position:'fixed', bottom:20, right:20, width:320,
@@ -654,9 +675,29 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
                 ✓ Gesynchroniseerd {new Date(syncStatus.syncedAt).toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'})}
               </div>
             )}
-            <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.6 }}>
-              Maak een GitHub PAT aan via <b>github.com → Settings → Developer settings → Personal access tokens</b> met <b>gist</b> scope. Plak hem hier — hij wordt lokaal opgeslagen, nooit in de code. Daarna sync je automatisch op elk apparaat.
-            </div>
+            {/* Setup-link delen */}
+            {gistReady && (
+              <div style={{ padding:'10px 12px', background:'var(--surface-2)', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>
+                <div style={{ fontSize:11, fontWeight:600, color:'var(--fg-muted)', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.05em' }}>
+                  Beginscherm / ander apparaat
+                </div>
+                <div style={{ fontSize:11, color:'var(--fg-dim)', lineHeight:1.5, marginBottom:8 }}>
+                  Kopieer deze link en open hem op je andere apparaat of beginscherm-app. Het Gist ID wordt dan automatisch ingevuld — je hoeft alleen nog je PAT in te voeren.
+                </div>
+                <button onClick={copyShareUrl}
+                  style={{ width:'100%', padding:'8px 12px', fontSize:12, borderRadius:'var(--radius)', cursor:'pointer',
+                    fontFamily:'inherit', fontWeight:500, border:'none',
+                    background: copyDone ? 'var(--positive)' : 'var(--accent)',
+                    color: '#fff', transition:'background .2s' }}>
+                  {copyDone ? '✓ Gekopieerd!' : '⎘ Kopieer setup-link'}
+                </button>
+              </div>
+            )}
+            {!gistReady && (
+              <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.6 }}>
+                Maak een GitHub PAT aan via <b>github.com → Settings → Developer settings → Personal access tokens (classic)</b> met <b>gist</b> scope. Plak hem hierboven — hij wordt alleen lokaal opgeslagen. Daarna sync je automatisch op elk apparaat én je beginscherm.
+              </div>
+            )}
           </div>
         </div>
 
