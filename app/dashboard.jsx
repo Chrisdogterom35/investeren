@@ -604,17 +604,20 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
 // Compacte partijrijen voor mobiel home-scherm
 function MobilePartyRows({ summaries, total }) {
-  const [metric, setMetric] = React.useState('all_pct');
+  const [metric, setMetric] = React.useState('value');
   const METRICS = [
+    { key: 'value',   label: 'Grootte' },
     { key: 'all_pct', label: 'Winst %' },
     { key: 'all_eur', label: 'Winst €' },
   ];
 
   const rows = [...summaries]
     .filter(s => s.currentValueEur > 0 || s.invested > 0)
-    .sort((a, b) => metric === 'all_pct'
-      ? (b.pnlPct || 0) - (a.pnlPct || 0)
-      : (b.pnl   || 0) - (a.pnl   || 0));
+    .sort((a, b) => {
+      if (metric === 'value')   return (b.currentValueEur || 0) - (a.currentValueEur || 0);
+      if (metric === 'all_pct') return (b.pnlPct || 0) - (a.pnlPct || 0);
+      return (b.pnl || 0) - (a.pnl || 0);
+    });
 
   return (
     <Card style={{ padding: '14px 16px' }}>
@@ -635,8 +638,9 @@ function MobilePartyRows({ summaries, total }) {
       </div>
       <div>
         {rows.map((s, i) => {
-          const val   = metric === 'all_pct' ? s.pnlPct : s.pnl;
+          const val   = metric === 'all_pct' ? s.pnlPct : metric === 'all_eur' ? s.pnl : s.currentValueEur;
           const isPct = metric === 'all_pct';
+          const isVal = metric === 'value';
           const share = total > 0 ? (s.currentValueEur / total * 100) : 0;
           return (
             <div key={s.party.id} style={{ display:'flex', alignItems:'center', gap:9,
@@ -651,8 +655,10 @@ function MobilePartyRows({ summaries, total }) {
                 </div>
               </div>
               <div style={{ fontFamily:'var(--ff-mono)', fontSize:13, fontWeight:600, flexShrink:0,
-                color:(val||0)>0?'var(--positive)':(val||0)<0?'var(--negative)':'var(--fg-muted)' }}>
-                {isPct
+                color: isVal ? 'var(--fg)' : (val||0)>0?'var(--positive)':(val||0)<0?'var(--negative)':'var(--fg-muted)' }}>
+                {isVal
+                  ? fmtEur(val||0)
+                  : isPct
                   ? `${(val||0)>=0?'+':''}${(val||0).toFixed(1)}%`
                   : `${(val||0)>=0?'+':'−'}${fmtEur(Math.abs(val||0))}`}
               </div>
