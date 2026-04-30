@@ -10,7 +10,7 @@ const TILE_METRICS = [
   { key: 'share',     label: 'Aandeel portfolio', short: 'share' },
 ];
 
-function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSpot, addTrigger = 0 }) {
+function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSpot, addTrigger = 0, isMobile = false }) {
   const [modalOpen, setModalOpen]               = React.useState(false);
   const [modalPreset, setModalPreset]           = React.useState(null);
   const [editingTx, setEditingTx]               = React.useState(null);
@@ -144,7 +144,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
     const header = (title, sub) => (
       <SectionTitle title={title} subtitle={sub} right={
-        editMode && (
+        editMode && !isMobile && (
           <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
             {reg.chartTypes.length > 1 && reg.chartTypes.map(type => (
               <button key={type} onClick={() => setChartType(wCfg.id, type)}
@@ -383,29 +383,31 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
   };
 
   return (
-    <div className="dash-wrap" style={{ maxWidth:1360, margin:'0 auto', padding:'28px 28px 60px' }}>
-      {/* HEADER */}
-      <header style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:24, gap:20, flexWrap:'wrap' }}>
-        <div>
-          <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'0.12em', color:'var(--fg-muted)', marginBottom:6, fontFamily:'var(--ff-mono)' }}>
-            Portfolio · bijgewerkt {fmtDate(new Date().toISOString().slice(0,10))}
+    <div className="dash-wrap" style={{ maxWidth:1360, margin:'0 auto', padding: isMobile ? '16px 12px 100px' : '28px 28px 60px' }}>
+      {/* HEADER — desktop only */}
+      {!isMobile && (
+        <header style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:24, gap:20, flexWrap:'wrap' }}>
+          <div>
+            <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'0.12em', color:'var(--fg-muted)', marginBottom:6, fontFamily:'var(--ff-mono)' }}>
+              Portfolio · bijgewerkt {fmtDate(new Date().toISOString().slice(0,10))}
+            </div>
+            <h1 style={{ margin:0, fontFamily:'var(--ff-display)', fontWeight:500, fontSize:44, letterSpacing:'-0.02em', lineHeight:1 }}>
+              Investeringen
+            </h1>
           </div>
-          <h1 style={{ margin:0, fontFamily:'var(--ff-display)', fontWeight:500, fontSize:44, letterSpacing:'-0.02em', lineHeight:1 }}>
-            Investeringen
-          </h1>
-        </div>
-        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-          <Button variant="ghost" onClick={() => setEditMode(!editMode)}
-            style={{ borderColor: editMode ? 'var(--accent)' : undefined, color: editMode ? 'var(--accent)' : undefined }}>
-            {editMode ? '✓ Klaar' : '⊞ Dashboard aanpassen'}
-          </Button>
-          <Button variant="secondary" onClick={() => openAdd({ type: 'waardering' })}>↻ Waardering updaten</Button>
-          <Button variant="primary" onClick={() => openAdd()}>+ Transactie toevoegen</Button>
-        </div>
-      </header>
+          <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+            <Button variant="ghost" onClick={() => setEditMode(!editMode)}
+              style={{ borderColor: editMode ? 'var(--accent)' : undefined, color: editMode ? 'var(--accent)' : undefined }}>
+              {editMode ? '✓ Klaar' : '⊞ Dashboard aanpassen'}
+            </Button>
+            <Button variant="secondary" onClick={() => openAdd({ type: 'waardering' })}>↻ Waardering updaten</Button>
+            <Button variant="primary" onClick={() => openAdd()}>+ Transactie toevoegen</Button>
+          </div>
+        </header>
+      )}
 
-      {/* Widget panel (edit mode) */}
-      {editMode && (
+      {/* Widget panel (edit mode) — desktop only */}
+      {editMode && !isMobile && (
         <div style={{ marginBottom:20, padding:'16px 20px', background:'var(--surface)', border:'1px solid var(--accent)',
           borderRadius:'var(--radius-lg)', display:'grid', gap:10 }}>
           <div style={{ fontSize:12, fontWeight:600, color:'var(--accent)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>
@@ -431,33 +433,79 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       )}
 
       {/* HERO TOTALS */}
-      <Card style={{ padding:28, marginBottom:20 }}>
-        <div className="hero-grid" style={{ display:'grid', gridTemplateColumns:'1.6fr 1fr 1fr 1fr 1fr', gap:28, alignItems:'start' }}>
-          <div>
-            <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'0.08em', color:'var(--fg-muted)', marginBottom:8, fontFamily:'var(--ff-mono)' }}>
-              Totale portfolio waarde
+      {isMobile ? (
+        /* ── Mobile hero: compact 2×2 grid ── */
+        <Card style={{ padding:'20px 16px', marginBottom:16 }}>
+          {/* Big total */}
+          <div style={{ marginBottom:16 }}>
+            <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.1em', color:'var(--fg-muted)', marginBottom:4, fontFamily:'var(--ff-mono)' }}>
+              Totale waarde
             </div>
-            <div style={{ fontFamily:'var(--ff-display)', fontSize:52, fontWeight:500, letterSpacing:'-0.025em', lineHeight:1 }}>
+            <div style={{ fontFamily:'var(--ff-display)', fontSize:42, fontWeight:500, letterSpacing:'-0.02em', lineHeight:1 }}>
               {fmtEur(total, {decimals:0})}
             </div>
-            <div style={{ display:'flex', gap:14, alignItems:'center', marginTop:10, flexWrap:'wrap' }}>
+            <div style={{ display:'flex', gap:10, alignItems:'center', marginTop:8, flexWrap:'wrap' }}>
               <Delta value={totalPnl} format="eur" />
               <Delta value={totalPnlPct} />
-              <span style={{ fontSize:12, color:'var(--fg-dim)' }}>all-time</span>
+              <span style={{ fontSize:11, color:'var(--fg-dim)' }}>all-time</span>
             </div>
           </div>
-          <HeroStat label="Totaal ingelegd" value={fmtEur(totalInvested)} sub={firstTxDate ? `vanaf ${fmtDate(firstTxDate)}` : '—'} />
-          <HeroStat label="YTD rendement"
-            value={<Delta value={ytd.pnlPct} />}
-            sub={`${fmtEur(ytd.pnl, {sign:true})} sinds 1 jan`} />
-          <HeroStat label="Dividenden & rente" value={fmtEur(summaries.reduce((s,x)=>s+x.totalIncome,0))} sub={`${summaries.filter(s=>s.currentValueEur>0).length} partijen actief`} />
-          <HeroStat label="Transactiekosten" value={totalFees > 0 ? `−${fmtEur(totalFees,{decimals:2})}` : '—'}
-            sub={`${state.transactions.length} transacties`} valueColor={totalFees > 0 ? 'var(--negative)' : undefined} />
-        </div>
-      </Card>
+          {/* 2×2 stats */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px 10px' }}>
+            <div>
+              <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--fg-muted)', marginBottom:3, fontFamily:'var(--ff-mono)' }}>Ingelegd</div>
+              <div style={{ fontFamily:'var(--ff-mono)', fontSize:15, fontWeight:500 }}>{fmtEur(totalInvested)}</div>
+              <div style={{ fontSize:10, color:'var(--fg-dim)' }}>{firstTxDate ? `vanaf ${fmtDate(firstTxDate)}` : '—'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--fg-muted)', marginBottom:3, fontFamily:'var(--ff-mono)' }}>YTD</div>
+              <div style={{ fontFamily:'var(--ff-mono)', fontSize:15, fontWeight:500 }}><Delta value={ytd.pnlPct} /></div>
+              <div style={{ fontSize:10, color:'var(--fg-dim)' }}>{fmtEur(ytd.pnl, {sign:true})} dit jaar</div>
+            </div>
+            <div>
+              <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--fg-muted)', marginBottom:3, fontFamily:'var(--ff-mono)' }}>Dividenden</div>
+              <div style={{ fontFamily:'var(--ff-mono)', fontSize:15, fontWeight:500 }}>{fmtEur(summaries.reduce((s,x)=>s+x.totalIncome,0))}</div>
+              <div style={{ fontSize:10, color:'var(--fg-dim)' }}>{summaries.filter(s=>s.currentValueEur>0).length} partijen</div>
+            </div>
+            <div>
+              <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--fg-muted)', marginBottom:3, fontFamily:'var(--ff-mono)' }}>Kosten</div>
+              <div style={{ fontFamily:'var(--ff-mono)', fontSize:15, fontWeight:500, color: totalFees > 0 ? 'var(--negative)' : undefined }}>
+                {totalFees > 0 ? `−${fmtEur(totalFees,{decimals:2})}` : '—'}
+              </div>
+              <div style={{ fontSize:10, color:'var(--fg-dim)' }}>{state.transactions.length} transacties</div>
+            </div>
+          </div>
+        </Card>
+      ) : (
+        /* ── Desktop hero: 5-column grid ── */
+        <Card style={{ padding:28, marginBottom:20 }}>
+          <div className="hero-grid" style={{ display:'grid', gridTemplateColumns:'1.6fr 1fr 1fr 1fr 1fr', gap:28, alignItems:'start' }}>
+            <div>
+              <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'0.08em', color:'var(--fg-muted)', marginBottom:8, fontFamily:'var(--ff-mono)' }}>
+                Totale portfolio waarde
+              </div>
+              <div style={{ fontFamily:'var(--ff-display)', fontSize:52, fontWeight:500, letterSpacing:'-0.025em', lineHeight:1 }}>
+                {fmtEur(total, {decimals:0})}
+              </div>
+              <div style={{ display:'flex', gap:14, alignItems:'center', marginTop:10, flexWrap:'wrap' }}>
+                <Delta value={totalPnl} format="eur" />
+                <Delta value={totalPnlPct} />
+                <span style={{ fontSize:12, color:'var(--fg-dim)' }}>all-time</span>
+              </div>
+            </div>
+            <HeroStat label="Totaal ingelegd" value={fmtEur(totalInvested)} sub={firstTxDate ? `vanaf ${fmtDate(firstTxDate)}` : '—'} />
+            <HeroStat label="YTD rendement"
+              value={<Delta value={ytd.pnlPct} />}
+              sub={`${fmtEur(ytd.pnl, {sign:true})} sinds 1 jan`} />
+            <HeroStat label="Dividenden & rente" value={fmtEur(summaries.reduce((s,x)=>s+x.totalIncome,0))} sub={`${summaries.filter(s=>s.currentValueEur>0).length} partijen actief`} />
+            <HeroStat label="Transactiekosten" value={totalFees > 0 ? `−${fmtEur(totalFees,{decimals:2})}` : '—'}
+              sub={`${state.transactions.length} transacties`} valueColor={totalFees > 0 ? 'var(--negative)' : undefined} />
+          </div>
+        </Card>
+      )}
 
-      {/* Spot rates bar */}
-      <div style={{ marginBottom:20, padding:'12px 20px', border:'1px solid var(--border)', borderRadius:'var(--radius)',
+      {/* Spot rates bar — desktop only */}
+      {!isMobile && <div style={{ marginBottom:20, padding:'12px 20px', border:'1px solid var(--border)', borderRadius:'var(--radius)',
         display:'flex', gap:16, alignItems:'center', fontSize:12, color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', flexWrap:'wrap' }}>
         <span style={{ color:'var(--fg-dim)', textTransform:'uppercase', letterSpacing:'0.06em', fontSize:10 }}>
           Spot ·{' '}
@@ -479,16 +527,25 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
             : spotStatus?.error ? `⚠ ${spotStatus.error}`
             : 'Auto-ververs elke 10 min'}
         </span>
-      </div>
+      </div>}
 
       {/* Render widget rows */}
-      {groupedWidgets.map((row, ri) => (
-        <div key={ri} className="widget-row" style={{ display:'grid', gridTemplateColumns:rowTemplate(row), gap:20, marginBottom:20 }}>
-          {row.map(wCfg => (
+      {isMobile ? (
+        /* Mobile: all widgets stacked in one column */
+        <div style={{ display:'grid', gap:14 }}>
+          {activeWidgets.map(wCfg => (
             <div key={wCfg.id}>{renderWidget(wCfg)}</div>
           ))}
         </div>
-      ))}
+      ) : (
+        groupedWidgets.map((row, ri) => (
+          <div key={ri} className="widget-row" style={{ display:'grid', gridTemplateColumns:rowTemplate(row), gap:20, marginBottom:20 }}>
+            {row.map(wCfg => (
+              <div key={wCfg.id}>{renderWidget(wCfg)}</div>
+            ))}
+          </div>
+        ))
+      )}
 
       {/* Empty state */}
       {activeWidgets.length === 0 && (

@@ -228,9 +228,12 @@ function App() {
     }
   }, []);
 
-  // Laad data van gist bij opstarten
+  // Laad data van gist bij opstarten (of zodra config via URL-hash binnenkomt)
+  const didInitialGistLoad = React.useRef(false);
   React.useEffect(() => {
     if (!gistConfig.pat || !gistConfig.gistId) return;
+    if (didInitialGistLoad.current) return;
+    didInitialGistLoad.current = true;
     setSyncStatus({ loading: true, error: null, syncedAt: null });
     gistLoad(gistConfig.pat, gistConfig.gistId)
       .then(data => {
@@ -238,7 +241,7 @@ function App() {
         setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
       })
       .catch(e => setSyncStatus({ loading: false, error: e.message, syncedAt: null }));
-  }, []); // eenmalig bij mount
+  }, [gistConfig.pat, gistConfig.gistId]); // herstart wanneer config verandert (bijv. via URL-hash)
 
   // Haal 1 jaar crypto-geschiedenis op als de history leeg is
   React.useEffect(() => {
@@ -535,7 +538,7 @@ function App() {
             <Dashboard state={state} setState={setState}
               tweaks={tweaks} setTweaks={updateTweaks}
               spotStatus={spotStatus} onRefreshSpot={refreshSpot}
-              addTrigger={mobileAddTrigger} />
+              addTrigger={mobileAddTrigger} isMobile={true} />
           )}
           {mobileTab === 'partijen' && (
             <MobilePartijenView summaries={summaries} spots={spots}
