@@ -13,34 +13,41 @@ function LineChart({ data, height = 220, showInvested = true }) {
   const [hoverIdx, setHoverIdx] = React.useState(null);
   if (!data.length || w === 0) return <div ref={ref} style={{ width: '100%', height }} />;
 
-  const pad = { t: 14, r: 14, b: 28, l: 52 };
-  const W = Math.max(300, w), H = height;
+  const narrow = w < 420;
+  const pad = { t: 10, r: 10, b: 24, l: narrow ? 38 : 52 };
+  const W = Math.max(280, w), H = height;
   const innerW = W - pad.l - pad.r, innerH = H - pad.t - pad.b;
   const values = data.flatMap(d => [d.total, d.invested]);
   const maxV = Math.max(...values) * 1.05 || 1;
   const x = i => pad.l + (data.length > 1 ? (i / (data.length - 1)) * innerW : 0);
   const y = v => pad.t + innerH - ((v / maxV) * innerH);
-  const totalPath   = data.map((d, i) => `${i === 0 ? 'M' : 'L'}${x(i)} ${y(d.total)}`).join(' ');
-  const investedPath= data.map((d, i) => `${i === 0 ? 'M' : 'L'}${x(i)} ${y(d.invested)}`).join(' ');
-  const areaPath = totalPath + ` L${x(data.length-1)} ${y(0)} L${x(0)} ${y(0)} Z`;
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => maxV * f);
-  const stepX = Math.max(1, Math.floor(data.length / 5));
+  const totalPath   = data.map((d, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(d.total).toFixed(1)}`).join(' ');
+  const investedPath= data.map((d, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(d.invested).toFixed(1)}`).join(' ');
+  const areaPath = totalPath + ` L${x(data.length-1).toFixed(1)} ${y(0).toFixed(1)} L${x(0).toFixed(1)} ${y(0).toFixed(1)} Z`;
+  const yTicks = narrow
+    ? [0, 0.5, 1].map(f => maxV * f)
+    : [0, 0.25, 0.5, 0.75, 1].map(f => maxV * f);
+  const stepX = Math.max(1, Math.floor(data.length / (narrow ? 3 : 5)));
   const xTickIdx = [];
   for (let i = 0; i < data.length; i += stepX) xTickIdx.push(i);
   if (xTickIdx[xTickIdx.length-1] !== data.length-1) xTickIdx.push(data.length-1);
-  const onMove = e => {
-    if (!ref.current) return;
-    const rect = ref.current.querySelector('svg').getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const ratio = (px - pad.l) / innerW;
-    const idx = Math.round(ratio * (data.length - 1));
-    setHoverIdx(Math.max(0, Math.min(data.length - 1, idx)));
+
+  const getIdx = (clientX, svgEl) => {
+    const rect = svgEl.getBoundingClientRect();
+    const ratio = (clientX - rect.left - pad.l) / innerW;
+    return Math.max(0, Math.min(data.length - 1, Math.round(ratio * (data.length - 1))));
   };
+  const onMove  = e => setHoverIdx(getIdx(e.clientX, e.currentTarget));
+  const onTouch = e => { e.preventDefault(); setHoverIdx(getIdx(e.touches[0].clientX, e.currentTarget)); };
   const hover = hoverIdx != null ? data[hoverIdx] : null;
+  const fs = narrow ? '9' : '10';
 
   return (
     <div ref={ref} style={{ width: '100%', position: 'relative', overflow: 'hidden' }}>
-      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display: 'block', maxWidth: '100%' }}>
+      <svg width={W} height={H}
+        onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)}
+        onTouchMove={onTouch} onTouchEnd={() => setHoverIdx(null)}
+        style={{ display: 'block', maxWidth: '100%', touchAction: 'none' }}>
         <defs>
           <linearGradient id="area-fill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.25" />
@@ -50,13 +57,13 @@ function LineChart({ data, height = 220, showInvested = true }) {
         {yTicks.map((v, i) => (
           <g key={i}>
             <line x1={pad.l} x2={W-pad.r} y1={y(v)} y2={y(v)} stroke="var(--border)" strokeWidth="1" strokeDasharray={i===0?'0':'2,3'} />
-            <text x={pad.l-8} y={y(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize="10" fontFamily="var(--ff-mono)">
-              {v>=1000?(v/1000).toFixed(1)+'k':Math.round(v)}
+            <text x={pad.l-5} y={y(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize={fs} fontFamily="var(--ff-mono)">
+              {v>=1000?(v/1000).toFixed(v>=10000?0:1)+'k':Math.round(v)}
             </text>
           </g>
         ))}
         {xTickIdx.map(i => (
-          <text key={i} x={x(i)} y={H-pad.b+16} textAnchor="middle" fill="var(--fg-dim)" fontSize="10" fontFamily="var(--ff-mono)">
+          <text key={i} x={x(i)} y={H-pad.b+14} textAnchor="middle" fill="var(--fg-dim)" fontSize={fs} fontFamily="var(--ff-mono)">
             {fmtMonth(data[i].date.slice(0,7))}
           </text>
         ))}
@@ -71,12 +78,13 @@ function LineChart({ data, height = 220, showInvested = true }) {
         )}
       </svg>
       {hover && (
-        <div style={{ position:'absolute', left:Math.min(W-200,Math.max(0,x(hoverIdx)-90)), top:4,
+        <div style={{ position:'absolute', left: Math.min(W - (narrow?160:200), Math.max(0, x(hoverIdx) - (narrow?60:90))), top:4,
           background:'var(--surface)', border:'1px solid var(--border-strong)', borderRadius:'var(--radius)',
-          padding:'8px 10px', fontSize:12, pointerEvents:'none', boxShadow:'var(--shadow)' }}>
-          <div style={{ color:'var(--fg-dim)', fontSize:10, fontFamily:'var(--ff-mono)' }}>{fmtDate(hover.date)}</div>
+          padding: narrow ? '5px 8px' : '8px 10px', fontSize: narrow ? 11 : 12,
+          pointerEvents:'none', boxShadow:'var(--shadow)' }}>
+          <div style={{ color:'var(--fg-dim)', fontSize: narrow ? 9 : 10, fontFamily:'var(--ff-mono)' }}>{fmtDate(hover.date)}</div>
           <div style={{ color:'var(--fg)', fontWeight:600, fontFamily:'var(--ff-mono)' }}>{fmtEur(hover.total)}</div>
-          <div style={{ color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', fontSize:11 }}>inleg {fmtEur(hover.invested)}</div>
+          {!narrow && <div style={{ color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', fontSize:11 }}>inleg {fmtEur(hover.invested)}</div>}
         </div>
       )}
     </div>

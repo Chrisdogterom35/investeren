@@ -10,7 +10,7 @@ const TILE_METRICS = [
   { key: 'share',     label: 'Aandeel portfolio', short: 'share' },
 ];
 
-function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSpot, addTrigger = 0, isMobile = false }) {
+function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSpot, addTrigger = 0, isMobile = false, onUpdateMeesman = () => {} }) {
   const [modalOpen, setModalOpen]               = React.useState(false);
   const [modalPreset, setModalPreset]           = React.useState(null);
   const [editingTx, setEditingTx]               = React.useState(null);
@@ -171,11 +171,11 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     switch (wCfg.id) {
       case 'portfolio_line':
         return (
-          <Card style={{ padding:22 }}>
+          <Card style={{ padding: isMobile ? '14px 12px' : 22 }}>
             {header('Waarde over tijd', ct === 'rendement%' ? 'Rendement % over tijd' : 'Huidige waarde vs. ingelegd')}
             {ct === 'rendement%'
-              ? <ReturnLineChart data={sparse} height={230} />
-              : <LineChart data={sparse} height={230} />}
+              ? <ReturnLineChart data={sparse} height={isMobile ? 185 : 230} />
+              : <LineChart data={sparse} height={isMobile ? 185 : 230} />}
           </Card>
         );
       case 'allocation':
@@ -551,6 +551,15 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
           {!activeWidgets.find(w => w.id === 'portfolio_line') && (
             <MobilePartyRows summaries={summaries} total={total} />
           )}
+
+          {/* Koersen bijwerken — onderaan de pagina */}
+          <MobileSpotBar
+            tweaks={tweaks} setTweaks={setTweaks}
+            spots={spots} state={state}
+            onUpdateMeesman={onUpdateMeesman}
+            onRefreshSpot={onRefreshSpot}
+            spotStatus={spotStatus}
+          />
         </div>
       ) : (
         groupedWidgets.map((row, ri) => (
@@ -651,6 +660,88 @@ function MobilePartyRows({ summaries, total }) {
           );
         })}
       </div>
+    </Card>
+  );
+}
+
+// Koersen bijwerken — onderaan het mobiele home-scherm
+function MobileSpotBar({ tweaks, setTweaks, spots, state, onUpdateMeesman, onRefreshSpot, spotStatus }) {
+  const [meesmanInput, setMeesmanInput] = React.useState('');
+  const lastNav = spots.meesmanNavEur ?? state.meesmanNavEur ?? 100.4;
+  const lastDate = (state.meesmanNavHistory || []).slice(-1)[0]?.date || '—';
+
+  const inpStyle = {
+    width: 92, padding: '6px 8px', fontSize: 14, fontFamily: 'var(--ff-mono)',
+    background: 'var(--surface-2)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)', color: 'var(--fg)', outline: 'none', textAlign: 'right',
+  };
+  const row = (label, sub, input) => (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'10px 0',
+      borderBottom:'1px solid var(--border)' }}>
+      <div>
+        <div style={{ fontSize:13, fontWeight:500 }}>{label}</div>
+        {sub && <div style={{ fontSize:10, color:'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>{sub}</div>}
+      </div>
+      {input}
+    </div>
+  );
+
+  const handleSaveMeesman = () => {
+    const v = parseFloat((meesmanInput || '').replace(',', '.'));
+    if (v > 0) { onUpdateMeesman(v); setMeesmanInput(''); }
+  };
+
+  return (
+    <Card style={{ padding:'14px 16px' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+        <div style={{ fontSize:12, fontWeight:600, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.06em' }}>
+          Koersen
+        </div>
+        <button onClick={onRefreshSpot} disabled={spotStatus?.loading}
+          style={{ padding:'3px 9px', fontSize:11, fontFamily:'inherit', cursor:'pointer',
+            borderRadius:'var(--radius)', border:'1px solid var(--border)',
+            background:'transparent', color:'var(--fg)', opacity: spotStatus?.loading ? 0.5 : 1 }}>
+          {spotStatus?.loading ? '↻…' : '↻ Live'}
+        </button>
+      </div>
+      {row('Goud', `€/gram · nu ${tweaks.goldSpotEurPerGram?.toFixed(2) || '—'}`,
+        <input type="number" step="0.01" style={inpStyle}
+          value={tweaks.goldSpotEurPerGram || ''}
+          onChange={e => setTweaks(t => ({...t, goldSpotEurPerGram: +e.target.value}))} />
+      )}
+      {row('Zilver', `€/oz · nu ${tweaks.silverSpotEurPerOunce?.toFixed(2) || '—'}`,
+        <input type="number" step="0.01" style={inpStyle}
+          value={tweaks.silverSpotEurPerOunce || ''}
+          onChange={e => setTweaks(t => ({...t, silverSpotEurPerOunce: +e.target.value}))} />
+      )}
+      <div style={{ padding:'10px 0' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+          <div>
+            <div style={{ fontSize:13, fontWeight:500 }}>Meesman</div>
+            <div style={{ fontSize:10, color:'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>
+              €/aandeel · nu {lastNav.toFixed(2)} · {lastDate}
+            </div>
+          </div>
+          <input type="number" step="0.01" style={inpStyle}
+            value={meesmanInput}
+            onChange={e => setMeesmanInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSaveMeesman()}
+            placeholder={lastNav.toFixed(2)} />
+        </div>
+        {meesmanInput.length > 0 && (
+          <button onClick={handleSaveMeesman}
+            style={{ marginTop:8, width:'100%', padding:'8px', fontSize:13, fontWeight:600,
+              fontFamily:'inherit', cursor:'pointer', borderRadius:'var(--radius)',
+              background:'var(--accent)', color:'#fff', border:'none' }}>
+            Meesman opslaan — €{parseFloat(meesmanInput.replace(',','.'))||0}
+          </button>
+        )}
+      </div>
+      {spotStatus?.fetchedAt && (
+        <div style={{ fontSize:10, color:'var(--fg-dim)', fontFamily:'var(--ff-mono)', marginTop:4 }}>
+          Live bijgewerkt {new Date(spotStatus.fetchedAt).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}
+        </div>
+      )}
     </Card>
   );
 }

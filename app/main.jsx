@@ -594,17 +594,14 @@ function App() {
         </div>
       </nav>
 
-      {/* Meesman wekelijkse prijs-banner */}
-      <MeesmanPriceBanner state={state} onUpdate={updateMeesmanNav}
-        histStatus={meesmanHistStatus} onLoadHistory={loadMeesmanHistory} />
-
       {isMobile ? (
         <>
           {mobileTab === 'home' && (
             <Dashboard state={state} setState={setState}
               tweaks={tweaks} setTweaks={updateTweaks}
               spotStatus={spotStatus} onRefreshSpot={refreshSpot}
-              addTrigger={mobileAddTrigger} isMobile={true} />
+              addTrigger={mobileAddTrigger} isMobile={true}
+              onUpdateMeesman={updateMeesmanNav} />
           )}
           {mobileTab === 'partijen' && (
             <MobilePartijenView summaries={summaries}
@@ -651,9 +648,51 @@ function App() {
           gistConfig={gistConfig} setGistConfig={setGistConfig}
           syncStatus={syncStatus} onCreateGist={createGistAndSave} onSyncNow={syncNow}
           onClose={() => setTweaksOpen(false)}
+          meesmanNav={state.meesmanNavEur} meesmanHistory={state.meesmanNavHistory}
+          onUpdateMeesman={updateMeesmanNav}
+          histStatus={meesmanHistStatus} onLoadHistory={loadMeesmanHistory}
         />
       )}
     </>
+  );
+}
+
+function MeesmanTweakRow({ meesmanNav, meesmanHistory, onUpdateMeesman, histStatus, onLoadHistory }) {
+  const [inp, setInp] = React.useState('');
+  const lastEntry = (meesmanHistory || []).slice(-1)[0];
+  const save = () => {
+    const v = parseFloat((inp || '').replace(',', '.'));
+    if (v > 0) { onUpdateMeesman(v); setInp(''); }
+  };
+  return (
+    <div style={{ display:'grid', gap:6 }}>
+      <label style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, fontSize:12 }}>
+        <span style={{ color:'var(--fg-muted)', flexShrink:0 }}>
+          Meesman (€/aandeel)
+          {lastEntry && <span style={{ color:'var(--fg-dim)', fontSize:10, display:'block' }}>{lastEntry.date} · {(meesmanHistory||[]).length} punten</span>}
+        </span>
+        <input type="number" step="0.01" value={inp}
+          onChange={e => setInp(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && save()}
+          placeholder={(meesmanNav || 100.4).toFixed(2)}
+          style={{ ...inputStyle, width:108, padding:'5px 8px', fontFamily:'var(--ff-mono)', fontSize:12 }} />
+      </label>
+      {inp.length > 0 && (
+        <button onClick={save}
+          style={{ padding:'5px 10px', fontSize:11, background:'var(--accent)', color:'#fff', border:'none',
+            borderRadius:'var(--radius)', cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+          Opslaan €{parseFloat((inp||'').replace(',','.'))||0}
+        </button>
+      )}
+      <button onClick={onLoadHistory} disabled={histStatus?.loading}
+        style={{ padding:'5px 10px', fontSize:11, background:'var(--surface-2)',
+          border:'1px solid var(--border)', borderRadius:'var(--radius)',
+          cursor:'pointer', fontFamily:'inherit', opacity: histStatus?.loading ? 0.6 : 1,
+          color: histStatus?.done ? 'var(--positive)' : 'var(--fg)' }}>
+        {histStatus?.loading ? '↻ Laden…' : histStatus?.done ? '✓ 2j history geladen' : '↓ Laad 2j history (Yahoo Finance)'}
+      </button>
+      {histStatus?.error && <div style={{ fontSize:10, color:'var(--negative)', fontFamily:'var(--ff-mono)' }}>⚠ {histStatus.error}</div>}
+    </div>
   );
 }
 
@@ -661,7 +700,9 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
                        spotStatus, onRefreshSpot,
                        t212Status, onImportT212, onDeleteT212,
                        onExport, onImport, importMsg,
-                       gistConfig, setGistConfig, syncStatus, onCreateGist, onSyncNow }) {
+                       gistConfig, setGistConfig, syncStatus, onCreateGist, onSyncNow,
+                       meesmanNav, meesmanHistory, onUpdateMeesman,
+                       histStatus, onLoadHistory }) {
 
   const fileRef = React.useRef(null);
 
@@ -815,7 +856,11 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
             {priceRow('Bitcoin (€/BTC)',      'btcSpotEur', '1')}
             {priceRow('Ethereum (€/ETH)',     'ethSpotEur', '0.01')}
             {priceRow('Pax Gold (€/PAXG)',   'paxgSpotEur', '0.01')}
-            {priceRow('Meesman NAV (€/part)', 'meesmanNavEur', '0.0001')}
+            {/* Meesman NAV — apart bijwerken zodat history correct blijft */}
+            <MeesmanTweakRow
+              meesmanNav={meesmanNav} meesmanHistory={meesmanHistory}
+              onUpdateMeesman={onUpdateMeesman}
+              histStatus={histStatus} onLoadHistory={onLoadHistory} />
           </div>
           <div style={{ fontSize:10, marginTop:7, fontFamily:'var(--ff-mono)',
             color: spotStatus?.error ? 'var(--negative)' : 'var(--fg-dim)' }}>
