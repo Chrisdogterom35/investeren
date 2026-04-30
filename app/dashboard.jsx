@@ -650,8 +650,13 @@ function MobilePartyRows({ summaries, total }) {
                 <div style={{ fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                   {s.party.name}
                 </div>
-                <div style={{ fontSize:10, color:'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>
-                  {fmtEur(s.currentValueEur)} · {share.toFixed(0)}%
+                <div style={{ fontSize:10, fontFamily:'var(--ff-mono)',
+                  color: isVal
+                    ? (s.pnl||0)>=0 ? 'var(--positive)' : 'var(--negative)'
+                    : 'var(--fg-dim)' }}>
+                  {isVal
+                    ? `${(s.pnl||0)>=0?'+':'−'}${fmtEur(Math.abs(s.pnl||0))} · ${(s.pnlPct||0)>=0?'+':''}${(s.pnlPct||0).toFixed(1)}%`
+                    : `${fmtEur(s.currentValueEur)} · ${share.toFixed(0)}%`}
                 </div>
               </div>
               <div style={{ fontFamily:'var(--ff-mono)', fontSize:13, fontWeight:600, flexShrink:0,
