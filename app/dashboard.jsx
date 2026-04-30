@@ -438,19 +438,19 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       {/* HERO TOTALS */}
       {isMobile ? (
         /* ── Mobile hero: compact 2×2 grid ── */
-        <Card style={{ padding:'20px 16px', marginBottom:16 }}>
+        <Card style={{ padding:'22px 18px 18px', marginBottom:16 }}>
           {/* Big total */}
-          <div style={{ marginBottom:16 }}>
-            <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.1em', color:'var(--fg-muted)', marginBottom:4, fontFamily:'var(--ff-mono)' }}>
+          <div style={{ marginBottom:18 }}>
+            <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'0.1em', color:'var(--fg-muted)', marginBottom:6, fontFamily:'var(--ff-mono)' }}>
               Totale waarde
             </div>
-            <div style={{ fontFamily:'var(--ff-display)', fontSize:42, fontWeight:500, letterSpacing:'-0.02em', lineHeight:1 }}>
+            <div style={{ fontFamily:'var(--ff-display)', fontSize:52, fontWeight:500, letterSpacing:'-0.025em', lineHeight:1 }}>
               {fmtEur(total, {decimals:0})}
             </div>
-            <div style={{ display:'flex', gap:10, alignItems:'center', marginTop:8, flexWrap:'wrap' }}>
+            <div style={{ display:'flex', gap:12, alignItems:'center', marginTop:10, flexWrap:'wrap' }}>
               <Delta value={totalPnl} format="eur" />
               <Delta value={totalPnlPct} />
-              <span style={{ fontSize:11, color:'var(--fg-dim)' }}>all-time</span>
+              <span style={{ fontSize:12, color:'var(--fg-dim)' }}>all-time</span>
             </div>
           </div>
           {/* 2×2 stats */}
