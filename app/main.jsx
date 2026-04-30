@@ -125,6 +125,35 @@ async function fetchCryptoHistory() {
   };
 }
 
+// Haal 2 jaar Meesman NAV-geschiedenis op via Yahoo Finance (0P0001IJJX.F)
+async function fetchMeesmanHistory() {
+  const yf = 'https://query2.finance.yahoo.com/v8/finance/chart/0P0001IJJX.F?interval=1d&range=2y';
+  // Probeer meerdere CORS-proxies na elkaar
+  const wrappers = [
+    u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    u => `https://api.codetabs.com/v1/proxy/?quest=${u}`,
+    u => u, // direct (laatste poging, browser kan dit blokkeren)
+  ];
+  for (const wrap of wrappers) {
+    try {
+      const res = await fetch(wrap(yf));
+      if (!res.ok) continue;
+      const data = await res.json();
+      const result = data?.chart?.result?.[0];
+      if (!result?.timestamp?.length) continue;
+      const ts      = result.timestamp;
+      const closes  = result.indicators?.quote?.[0]?.close || [];
+      const history = ts
+        .map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), nav: closes[i] ? +closes[i].toFixed(4) : null }))
+        .filter(h => h.nav != null)
+        .filter((h, i, arr) => i === 0 || h.date !== arr[i - 1].date);
+      if (history.length < 10) continue;
+      return { meesmanNavEur: history[history.length - 1].nav, meesmanNavHistory: history };
+    } catch {}
+  }
+  throw new Error('Geen historische data beschikbaar via Yahoo Finance');
+}
+
 async function fetchMeesmanNav() {
   const end   = new Date().toISOString().slice(0, 10);
   const start = new Date(Date.now() - 730 * 86400000).toISOString().slice(0, 10);
@@ -341,6 +370,32 @@ function App() {
     }));
   }, []);
 
+  // Haal historische Meesman data op via Yahoo Finance
+  const [meesmanHistStatus, setMeesmanHistStatus] = React.useState({ loading: false, error: null, done: false });
+  const loadMeesmanHistory = React.useCallback(async () => {
+    setMeesmanHistStatus({ loading: true, error: null, done: false });
+    try {
+      const result = await fetchMeesmanHistory();
+      setState(s => {
+        // Samenvoegen: bestaande handmatige entries bewaren, Yahoo-data als basis
+        const merged = [...result.meesmanNavHistory];
+        (s.meesmanNavHistory || []).forEach(h => {
+          if (!merged.find(m => m.date === h.date)) merged.push(h);
+        });
+        merged.sort((a, b) => a.date.localeCompare(b.date));
+        return { ...s, meesmanNavEur: result.meesmanNavEur, meesmanNavHistory: merged };
+      });
+      setMeesmanHistStatus({ loading: false, error: null, done: true });
+    } catch (e) {
+      setMeesmanHistStatus({ loading: false, error: e.message, done: false });
+    }
+  }, []);
+
+  // Auto-fetch bij eerste keer opstarten als history leeg/schaars is
+  React.useEffect(() => {
+    if ((state.meesmanNavHistory || []).length < 20) loadMeesmanHistory();
+  }, []); // eslint-disable-line
+
   const importT212 = React.useCallback(async () => {
     const auth = buildT212Auth(tweaks.t212ApiKey);
     if (!auth) return;
@@ -540,7 +595,8 @@ function App() {
       </nav>
 
       {/* Meesman wekelijkse prijs-banner */}
-      <MeesmanPriceBanner state={state} onUpdate={updateMeesmanNav} />
+      <MeesmanPriceBanner state={state} onUpdate={updateMeesmanNav}
+        histStatus={meesmanHistStatus} onLoadHistory={loadMeesmanHistory} />
 
       {isMobile ? (
         <>
@@ -945,54 +1001,82 @@ function MobileNav({ tab, onTab, onAdd, onSettings, tweaksOpen }) {
   );
 }
 
-function MeesmanPriceBanner({ state, onUpdate }) {
-  const [input, setInput] = React.useState('');
+function MeesmanPriceBanner({ state, onUpdate, histStatus, onLoadHistory }) {
+  const [input, setInput]         = React.useState('');
   const [dismissed, setDismissed] = React.useState(false);
 
-  const history = state.meesmanNavHistory || [];
+  const history   = state.meesmanNavHistory || [];
   const lastEntry = history.length ? history[history.length - 1] : null;
   const lastDate  = lastEntry?.date || null;
   const daysSince = lastDate
     ? Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000)
     : 999;
 
-  if (dismissed || daysSince < 7) return null;
+  // Verberg banner als recent bijgewerkt en history heeft genoeg punten
+  if (dismissed || (daysSince < 7 && history.length >= 20)) return null;
 
   const handleSave = () => {
-    const v = parseFloat(input.replace(',', '.'));
+    const v = parseFloat((input || '').replace(',', '.'));
     if (v > 0) { onUpdate(v); setDismissed(true); }
   };
 
+  const needsHistory = history.length < 20;
+
   return (
     <div style={{ background: 'var(--surface)', borderBottom: '2px solid oklch(72% 0.16 75)',
-      padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', zIndex: 40, position: 'relative' }}>
-      <span style={{ fontSize: 16 }}>📈</span>
-      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>
-        Meesman koers bijwerken
-      </span>
-      {lastEntry && (
+      padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      zIndex: 40, position: 'relative' }}>
+      <span style={{ fontSize: 15 }}>📈</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>Meesman</span>
+      {lastEntry ? (
         <span style={{ fontSize: 11, color: 'var(--fg-muted)', fontFamily: 'var(--ff-mono)' }}>
-          Laatste: €{lastEntry.nav.toFixed(4)} op {lastEntry.date}
-          {daysSince > 0 && ` (${daysSince} dagen geleden)`}
+          €{lastEntry.nav.toFixed(2)} · {daysSince > 0 ? `${daysSince}d geleden` : 'vandaag'}
+          {history.length > 1 && ` · ${history.length} punten`}
+        </span>
+      ) : (
+        <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Geen history</span>
+      )}
+
+      {/* Historische data ophalen van Yahoo Finance */}
+      {needsHistory && (
+        <button onClick={onLoadHistory} disabled={histStatus?.loading}
+          style={{ padding: '4px 10px', fontSize: 11, fontFamily: 'inherit', cursor: 'pointer',
+            borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+            background: histStatus?.done ? 'var(--positive)' : 'var(--surface-2)',
+            color: histStatus?.done ? '#fff' : 'var(--fg)', opacity: histStatus?.loading ? 0.6 : 1 }}>
+          {histStatus?.loading ? '↻ Laden…' : histStatus?.done ? '✓ Geladen' : '↓ Laad 2j history'}
+        </button>
+      )}
+      {histStatus?.error && (
+        <span style={{ fontSize: 10, color: 'var(--negative)', fontFamily: 'var(--ff-mono)' }}>
+          ⚠ {histStatus.error}
         </span>
       )}
-      <input
-        type="number" step="0.01" value={input}
-        onChange={e => setInput(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && handleSave()}
-        placeholder={lastEntry ? lastEntry.nav.toFixed(2) : '100.40'}
-        style={{ width: 90, padding: '5px 8px', fontSize: 13, fontFamily: 'var(--ff-mono)',
-          background: 'var(--surface-2)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)', color: 'var(--fg)', outline: 'none' }}
-      />
-      <button onClick={handleSave}
-        style={{ padding: '5px 14px', background: 'var(--accent)', color: '#fff', border: 'none',
-          borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
-        Opslaan
-      </button>
+
+      {/* Handmatige weekelijkse prijs-update */}
+      {daysSince >= 7 && (
+        <>
+          <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>· Nieuwe koers:</span>
+          <input
+            type="number" step="0.01" value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSave()}
+            placeholder={lastEntry ? lastEntry.nav.toFixed(2) : '100.40'}
+            style={{ width: 80, padding: '4px 7px', fontSize: 13, fontFamily: 'var(--ff-mono)',
+              background: 'var(--surface-2)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)', color: 'var(--fg)', outline: 'none' }}
+          />
+          <button onClick={handleSave}
+            style={{ padding: '4px 12px', background: 'var(--accent)', color: '#fff', border: 'none',
+              borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
+            Opslaan
+          </button>
+        </>
+      )}
+
       <button onClick={() => setDismissed(true)}
-        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--fg-muted)',
-          fontSize: 18, lineHeight: 1, marginLeft: 'auto', padding: '0 4px' }}>
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--fg-dim)',
+          fontSize: 18, lineHeight: 1, marginLeft: 'auto', padding: '0 2px' }}>
         ×
       </button>
     </div>

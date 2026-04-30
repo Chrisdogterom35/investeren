@@ -534,11 +534,23 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
       {/* Render widget rows */}
       {isMobile ? (
-        /* Mobile: all widgets stacked in one column */
+        /* Mobile: alle widgets in één kolom; party_grid vervangen door compacte rijen */
         <div style={{ display:'grid', gap:14 }}>
-          {activeWidgets.map(wCfg => (
-            <div key={wCfg.id}>{renderWidget(wCfg)}</div>
-          ))}
+          {activeWidgets
+            .filter(w => w.id !== 'party_grid')
+            .map(wCfg => (
+              <React.Fragment key={wCfg.id}>
+                <div>{renderWidget(wCfg)}</div>
+                {/* Compacte partijrijen direct na de waarde-over-tijd grafiek */}
+                {wCfg.id === 'portfolio_line' && (
+                  <MobilePartyRows summaries={summaries} total={total} />
+                )}
+              </React.Fragment>
+            ))}
+          {/* Fallback: als portfolio_line niet actief is, toon rijen bovenaan */}
+          {!activeWidgets.find(w => w.id === 'portfolio_line') && (
+            <MobilePartyRows summaries={summaries} total={total} />
+          )}
         </div>
       ) : (
         groupedWidgets.map((row, ri) => (
@@ -578,6 +590,68 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
         onSave={saveCustomParty} initial={editParty}
       />
     </div>
+  );
+}
+
+// Compacte partijrijen voor mobiel home-scherm
+function MobilePartyRows({ summaries, total }) {
+  const [metric, setMetric] = React.useState('all_pct');
+  const METRICS = [
+    { key: 'all_pct', label: 'Winst %' },
+    { key: 'all_eur', label: 'Winst €' },
+  ];
+
+  const rows = [...summaries]
+    .filter(s => s.currentValueEur > 0 || s.invested > 0)
+    .sort((a, b) => metric === 'all_pct'
+      ? (b.pnlPct || 0) - (a.pnlPct || 0)
+      : (b.pnl   || 0) - (a.pnl   || 0));
+
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+        <div style={{ fontSize:13, fontWeight:600, letterSpacing:'-0.01em' }}>Partijen</div>
+        <div style={{ display:'flex', gap:4 }}>
+          {METRICS.map(m => (
+            <button key={m.key} onClick={() => setMetric(m.key)}
+              style={{ padding:'3px 9px', fontSize:11, fontFamily:'inherit', cursor:'pointer',
+                borderRadius:999,
+                border:'1px solid '+(metric===m.key?'var(--fg)':'var(--border)'),
+                background: metric===m.key?'var(--fg)':'transparent',
+                color:       metric===m.key?'var(--bg)':'var(--fg-muted)' }}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        {rows.map((s, i) => {
+          const val   = metric === 'all_pct' ? s.pnlPct : s.pnl;
+          const isPct = metric === 'all_pct';
+          const share = total > 0 ? (s.currentValueEur / total * 100) : 0;
+          return (
+            <div key={s.party.id} style={{ display:'flex', alignItems:'center', gap:9,
+              padding:'9px 0', borderBottom: i < rows.length-1 ? '1px solid var(--border)' : 'none' }}>
+              <div style={{ width:8, height:8, borderRadius:'50%', background:s.party.color, flexShrink:0 }} />
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {s.party.name}
+                </div>
+                <div style={{ fontSize:10, color:'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>
+                  {fmtEur(s.currentValueEur)} · {share.toFixed(0)}%
+                </div>
+              </div>
+              <div style={{ fontFamily:'var(--ff-mono)', fontSize:13, fontWeight:600, flexShrink:0,
+                color:(val||0)>0?'var(--positive)':(val||0)<0?'var(--negative)':'var(--fg-muted)' }}>
+                {isPct
+                  ? `${(val||0)>=0?'+':''}${(val||0).toFixed(1)}%`
+                  : `${(val||0)>=0?'+':'−'}${fmtEur(Math.abs(val||0))}`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 
