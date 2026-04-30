@@ -3,7 +3,7 @@
 // ====== Line chart (portfolio value over time) ======
 function LineChart({ data, height = 220, showInvested = true }) {
   const ref = React.useRef();
-  const [w, setW] = React.useState(600);
+  const [w, setW] = React.useState(0);
   React.useEffect(() => {
     if (!ref.current) return;
     const ro = new ResizeObserver(entries => { for (const e of entries) setW(e.contentRect.width); });
@@ -11,7 +11,7 @@ function LineChart({ data, height = 220, showInvested = true }) {
     return () => ro.disconnect();
   }, []);
   const [hoverIdx, setHoverIdx] = React.useState(null);
-  if (!data.length) return <div ref={ref} style={{ height }} />;
+  if (!data.length || w === 0) return <div ref={ref} style={{ width: '100%', height }} />;
 
   const pad = { t: 14, r: 14, b: 28, l: 52 };
   const W = Math.max(300, w), H = height;
@@ -39,8 +39,8 @@ function LineChart({ data, height = 220, showInvested = true }) {
   const hover = hoverIdx != null ? data[hoverIdx] : null;
 
   return (
-    <div ref={ref} style={{ width: '100%', position: 'relative' }}>
-      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display: 'block' }}>
+    <div ref={ref} style={{ width: '100%', position: 'relative', overflow: 'hidden' }}>
+      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display: 'block', maxWidth: '100%' }}>
         <defs>
           <linearGradient id="area-fill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.25" />
@@ -86,7 +86,7 @@ function LineChart({ data, height = 220, showInvested = true }) {
 // ====== Multi-line allocation chart ======
 function AllocationLineChart({ timeSeries, parties, height = 240 }) {
   const ref = React.useRef();
-  const [w, setW] = React.useState(600);
+  const [w, setW] = React.useState(0);
   const [hoverParty, setHoverParty] = React.useState(null);
   React.useEffect(() => {
     if (!ref.current) return;
@@ -110,10 +110,11 @@ function AllocationLineChart({ timeSeries, parties, height = 240 }) {
     };
   }, [dates, byParty, parties]);
 
-  if (!thinDates.length) return <div ref={ref} style={{ height }} />;
+  if (!thinDates.length || w === 0) return <div ref={ref} style={{ width: '100%', height }} />;
 
-  const pad = { t: 14, r: 140, b: 28, l: 52 };
-  const W = Math.max(320, w), H = height;
+  const narrow = w < 480;
+  const pad = { t: 14, r: narrow ? 14 : 140, b: 28, l: 46 };
+  const W = Math.max(200, w), H = height;
   const innerW = W - pad.l - pad.r, innerH = H - pad.t - pad.b;
   const allVals = parties.flatMap(p => thinByParty[p.id] || []).filter(v => v != null);
   const maxV = Math.max(1, ...allVals) * 1.08;
@@ -122,12 +123,12 @@ function AllocationLineChart({ timeSeries, parties, height = 240 }) {
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => maxV * f);
 
   return (
-    <div ref={ref} style={{ width: '100%', position: 'relative' }}>
-      <svg width={W} height={H} style={{ display: 'block', overflow: 'visible' }}>
+    <div ref={ref} style={{ width: '100%', overflow: 'hidden' }}>
+      <svg width={W} height={H} style={{ display: 'block', maxWidth: '100%' }}>
         {yTicks.map((v, i) => (
           <g key={i}>
             <line x1={pad.l} x2={W - pad.r} y1={yv(v)} y2={yv(v)} stroke="var(--border)" strokeWidth="1" strokeDasharray={i===0?'0':'2,3'} />
-            <text x={pad.l-6} y={yv(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize="10" fontFamily="var(--ff-mono)">
+            <text x={pad.l-4} y={yv(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize="10" fontFamily="var(--ff-mono)">
               {v>=1000?(v/1000).toFixed(1)+'k':Math.round(v)}
             </text>
           </g>
@@ -148,8 +149,8 @@ function AllocationLineChart({ timeSeries, parties, height = 240 }) {
             />
           );
         })}
-        {/* Legend on right side */}
-        {parties.map((p, i) => {
+        {/* Legend on right side — desktop only */}
+        {!narrow && parties.map((p) => {
           const vals = thinByParty[p.id];
           const lastVal = vals ? vals[vals.length - 1] : 0;
           return (
@@ -168,7 +169,7 @@ function AllocationLineChart({ timeSeries, parties, height = 240 }) {
         })}
         {/* X labels */}
         {(() => {
-          const stepX = Math.max(1, Math.floor(thinDates.length / 5));
+          const stepX = Math.max(1, Math.floor(thinDates.length / (narrow ? 4 : 5)));
           const xTix = [];
           for (let i = 0; i < thinDates.length; i += stepX) xTix.push(i);
           if (xTix[xTix.length-1] !== thinDates.length-1) xTix.push(thinDates.length-1);
@@ -179,6 +180,19 @@ function AllocationLineChart({ timeSeries, parties, height = 240 }) {
           ));
         })()}
       </svg>
+      {/* Legend below chart — mobile only */}
+      {narrow && (
+        <div style={{ display:'flex', gap:'5px 10px', flexWrap:'wrap', marginTop:8, paddingLeft: pad.l }}>
+          {parties.map(p => (
+            <button key={p.id} onClick={() => setHoverParty(v => v === p.id ? null : p.id)}
+              style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, background:'none', border:'none',
+                cursor:'pointer', padding:0, opacity: hoverParty && hoverParty !== p.id ? 0.35 : 1, transition:'opacity .15s' }}>
+              <div style={{ width:8, height:8, borderRadius:'50%', background:p.color, flexShrink:0 }} />
+              <span style={{ color:'var(--fg-muted)', fontFamily:'var(--ff-sans)' }}>{p.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -242,7 +256,7 @@ function AllocationBarChart({ items, height = 180 }) {
   return (
     <div style={{ display:'grid', gap:10 }}>
       {items.map((it) => (
-        <div key={it.label} style={{ display:'grid', gridTemplateColumns:'110px 1fr 80px', alignItems:'center', gap:8, fontSize:12 }}>
+        <div key={it.label} style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(60px,3fr) 68px', alignItems:'center', gap:8, fontSize:12 }}>
           <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'var(--fg)' }}>{it.label}</div>
           <div style={{ height:14, background:'var(--surface-2)', borderRadius:2, overflow:'hidden' }}>
             <div style={{ width:`${(it.value/max)*100}%`, height:'100%', background:it.color, borderRadius:2, transition:'width .4s' }} />
@@ -257,44 +271,48 @@ function AllocationBarChart({ items, height = 180 }) {
 // ====== Grouped bar: Invested vs current value ======
 function InvestedVsValueChart({ summaries, height = 240 }) {
   const ref = React.useRef();
-  const [w, setW] = React.useState(600);
+  const [w, setW] = React.useState(0);
   React.useEffect(() => {
     if (!ref.current) return;
     const ro = new ResizeObserver(entries => { for (const e of entries) setW(e.contentRect.width); });
     ro.observe(ref.current); return () => ro.disconnect();
   }, []);
-  const pad = { t:16, r:14, b:48, l:48 };
-  const W = Math.max(320, w), H = height;
+  if (w === 0) return <div ref={ref} style={{ width:'100%', height }} />;
+  const pad = { t:16, r:14, b:48, l:44 };
+  const W = Math.max(200, w), H = height;
   const innerW = W-pad.l-pad.r, innerH = H-pad.t-pad.b;
-  const max = Math.max(...summaries.flatMap(s=>[s.invested,s.currentValueEur])) * 1.1 || 1;
-  const bw = innerW / summaries.length;
-  const barW = Math.min(34, (bw-10)/2);
+  const narrow = w < 480;
+  const visibleSummaries = narrow ? summaries.filter(s => s.currentValueEur > 0 || s.invested > 0) : summaries;
+  const max = Math.max(...visibleSummaries.flatMap(s=>[s.invested,s.currentValueEur])) * 1.1 || 1;
+  const bw = innerW / Math.max(1, visibleSummaries.length);
+  const barW = Math.min(28, Math.max(4, (bw-8)/2));
   const y = v => pad.t + innerH - (v/max)*innerH;
 
   return (
-    <div ref={ref} style={{ width:'100%' }}>
-      <svg width={W} height={H} style={{ display:'block' }}>
+    <div ref={ref} style={{ width:'100%', overflow:'hidden' }}>
+      <svg width={W} height={H} style={{ display:'block', maxWidth:'100%' }}>
         {[0,0.25,0.5,0.75,1].map((f,i) => {
           const v = max*f;
           return (
             <g key={i}>
               <line x1={pad.l} x2={W-pad.r} y1={y(v)} y2={y(v)} stroke="var(--border)" strokeDasharray={i===0?'0':'2,3'} />
-              <text x={pad.l-8} y={y(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize="10" fontFamily="var(--ff-mono)">
+              <text x={pad.l-4} y={y(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize="10" fontFamily="var(--ff-mono)">
                 {v>=1000?(v/1000).toFixed(1)+'k':Math.round(v)}
               </text>
             </g>
           );
         })}
-        {summaries.map((s, i) => {
+        {visibleSummaries.map((s, i) => {
           const cx = pad.l + bw*i + bw/2;
+          const shortName = narrow ? s.party.name.split(' ')[0].slice(0,7) : s.party.name.split(' ')[0];
           return (
             <g key={s.party.id}>
-              <rect x={cx-barW-2} y={y(s.invested)} width={barW} height={Math.max(0,y(0)-y(s.invested))} fill="var(--fg-dim)" opacity="0.55" rx="1" />
-              <rect x={cx+2} y={y(s.currentValueEur)} width={barW} height={Math.max(0,y(0)-y(s.currentValueEur))} fill={s.party.color} rx="1" />
-              <text x={cx} y={H-pad.b+16} textAnchor="middle" fill="var(--fg-muted)" fontSize="10" fontFamily="var(--ff-sans)">{s.party.name.split(' ')[0]}</text>
-              <text x={cx} y={H-pad.b+30} textAnchor="middle" fontSize="10" fontFamily="var(--ff-mono)" fill={s.pnl>=0?'var(--positive)':'var(--negative)'}>
+              <rect x={cx-barW-1} y={y(s.invested)} width={barW} height={Math.max(0,y(0)-y(s.invested))} fill="var(--fg-dim)" opacity="0.55" rx="1" />
+              <rect x={cx+1} y={y(s.currentValueEur)} width={barW} height={Math.max(0,y(0)-y(s.currentValueEur))} fill={s.party.color} rx="1" />
+              <text x={cx} y={H-pad.b+14} textAnchor="middle" fill="var(--fg-muted)" fontSize={narrow?9:10} fontFamily="var(--ff-sans)">{shortName}</text>
+              {!narrow && <text x={cx} y={H-pad.b+28} textAnchor="middle" fontSize="10" fontFamily="var(--ff-mono)" fill={s.pnl>=0?'var(--positive)':'var(--negative)'}>
                 {s.invested>0 ? fmtPct(s.pnlPct,{decimals:1}) : '—'}
-              </text>
+              </text>}
             </g>
           );
         })}
@@ -319,7 +337,7 @@ function ReturnBars({ summaries }) {
         const pos = pct >= 0;
         const bw = Math.abs(pct) / maxAbs * 50;
         return (
-          <div key={s.party.id} style={{ display:'grid', gridTemplateColumns:'110px 1fr 90px', alignItems:'center', gap:12, fontSize:12 }}>
+          <div key={s.party.id} style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(60px,3fr) 68px', alignItems:'center', gap:8, fontSize:12 }}>
             <div style={{ color:'var(--fg)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.party.name}</div>
             <div style={{ position:'relative', height:14, background:'var(--surface-2)', borderRadius:2 }}>
               <div style={{ position:'absolute', left:'50%', top:0, bottom:0, width:1, background:'var(--border-strong)' }} />
@@ -339,22 +357,23 @@ function ReturnBars({ summaries }) {
 // ====== Monthly inleg bar chart ======
 function MonthlyBars({ months, height = 180 }) {
   const ref = React.useRef();
-  const [w, setW] = React.useState(600);
+  const [w, setW] = React.useState(0);
   React.useEffect(() => {
     if (!ref.current) return;
     const ro = new ResizeObserver(entries => { for (const e of entries) setW(e.contentRect.width); });
     ro.observe(ref.current); return () => ro.disconnect();
   }, []);
+  if (!months.length || w === 0) return <div ref={ref} style={{ width:'100%', height }} />;
   const pad = { t:12, r:12, b:30, l:40 };
-  const W = Math.max(320, w), H = height;
+  const W = Math.max(200, w), H = height;
   const innerW = W-pad.l-pad.r, innerH = H-pad.t-pad.b;
   const max = Math.max(1, ...months.map(m => m.inleg + m.koop));
   const bw = innerW / Math.max(1, months.length);
   const y = v => pad.t + innerH - (v/max)*innerH;
 
   return (
-    <div ref={ref} style={{ width:'100%' }}>
-      <svg width={W} height={H} style={{ display:'block' }}>
+    <div ref={ref} style={{ width:'100%', overflow:'hidden' }}>
+      <svg width={W} height={H} style={{ display:'block', maxWidth:'100%' }}>
         {[0,0.5,1].map((f,i) => {
           const v = max*f;
           return (
@@ -420,7 +439,7 @@ function GoalsProgress({ summaries }) {
 // ====== Portfolio return % over time ======
 function ReturnLineChart({ data, height = 230 }) {
   const ref = React.useRef();
-  const [w, setW] = React.useState(600);
+  const [w, setW] = React.useState(0);
   React.useEffect(() => {
     if (!ref.current) return;
     const ro = new ResizeObserver(entries => { for (const e of entries) setW(e.contentRect.width); });
@@ -429,7 +448,7 @@ function ReturnLineChart({ data, height = 230 }) {
   }, []);
   const [hoverIdx, setHoverIdx] = React.useState(null);
   const filtered = data.filter(d => d.invested > 0);
-  if (!filtered.length) return <div ref={ref} style={{ height }} />;
+  if (!filtered.length || w === 0) return <div ref={ref} style={{ width:'100%', height }} />;
 
   const series = filtered.map(d => ({ ...d, ret: ((d.total - d.invested) / d.invested) * 100 }));
   const pad = { t: 14, r: 14, b: 28, l: 52 };
@@ -459,8 +478,8 @@ function ReturnLineChart({ data, height = 230 }) {
   const hover = hoverIdx != null ? series[hoverIdx] : null;
 
   return (
-    <div ref={ref} style={{ width:'100%', position:'relative' }}>
-      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display:'block' }}>
+    <div ref={ref} style={{ width:'100%', position:'relative', overflow:'hidden' }}>
+      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display:'block', maxWidth:'100%' }}>
         <defs>
           <linearGradient id="ret-fill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--positive)" stopOpacity="0.25" />
@@ -505,21 +524,19 @@ function ReturnTable({ summaries }) {
   const sorted = [...summaries].sort((a, b) => (b.pnlPct||0) - (a.pnlPct||0));
   return (
     <div style={{ display:'grid', gap:0, marginTop:4 }}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 90px 90px 80px', fontSize:10, color:'var(--fg-muted)',
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 72px 72px', fontSize:10, color:'var(--fg-muted)',
         textTransform:'uppercase', letterSpacing:'0.05em', padding:'0 4px 6px', borderBottom:'1px solid var(--border)', fontFamily:'var(--ff-mono)' }}>
         <span>Partij</span>
-        <span style={{ textAlign:'right' }}>Ingelegd</span>
         <span style={{ textAlign:'right' }}>Waarde</span>
         <span style={{ textAlign:'right' }}>Rendement</span>
       </div>
       {sorted.map(s => (
-        <div key={s.party.id} style={{ display:'grid', gridTemplateColumns:'1fr 90px 90px 80px', fontSize:13,
+        <div key={s.party.id} style={{ display:'grid', gridTemplateColumns:'1fr 72px 72px', fontSize:13,
           padding:'8px 4px', borderBottom:'1px dashed var(--border)', fontFamily:'var(--ff-mono)', alignItems:'center' }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, overflow:'hidden' }}>
             <div style={dotStyle(s.party.color, 8)} />
             <span style={{ color:'var(--fg)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:12 }}>{s.party.name}</span>
           </div>
-          <span style={{ textAlign:'right', color:'var(--fg-muted)', fontSize:12 }}>{s.invested>0?fmtEur(s.invested):'—'}</span>
           <span style={{ textAlign:'right', color:'var(--fg)', fontSize:12 }}>{s.currentValueEur>0?fmtEur(s.currentValueEur):'—'}</span>
           <span style={{ textAlign:'right', color:s.pnlPct>=0?'var(--positive)':'var(--negative)', fontSize:12 }}>
             {s.invested>0?fmtPct(s.pnlPct,{decimals:2}):'—'}
@@ -533,14 +550,14 @@ function ReturnTable({ summaries }) {
 // ====== Monthly inleg line chart ======
 function MonthlyLineChart({ months, height = 200 }) {
   const ref = React.useRef();
-  const [w, setW] = React.useState(600);
+  const [w, setW] = React.useState(0);
   React.useEffect(() => {
     if (!ref.current) return;
     const ro = new ResizeObserver(entries => { for (const e of entries) setW(e.contentRect.width); });
     ro.observe(ref.current); return () => ro.disconnect();
   }, []);
   const [hoverIdx, setHoverIdx] = React.useState(null);
-  if (!months.length) return <div ref={ref} style={{ height }} />;
+  if (!months.length || w === 0) return <div ref={ref} style={{ width:'100%', height }} />;
 
   const pad = { t: 12, r: 12, b: 30, l: 40 };
   const W = Math.max(320, w), H = height;
@@ -561,8 +578,8 @@ function MonthlyLineChart({ months, height = 200 }) {
   const hover = hoverIdx != null ? months[hoverIdx] : null;
 
   return (
-    <div ref={ref} style={{ width:'100%', position:'relative' }}>
-      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display:'block' }}>
+    <div ref={ref} style={{ width:'100%', position:'relative', overflow:'hidden' }}>
+      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display:'block', maxWidth:'100%' }}>
         <defs>
           <linearGradient id="inleg-fill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.2" />
