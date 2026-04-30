@@ -147,18 +147,30 @@ function loadState() {
         const grTxs = GR_SEED_TX.map((t, i) => ({ id: makeId() + 'gr' + i, ...t }));
         parsed.transactions = [...parsed.transactions, ...grTxs];
       }
+      // Migration: Meesman NAV verhuisd van tweaks naar state
+      if (parsed.meesmanNavEur == null) {
+        parsed.meesmanNavEur = (window.TWEAKS && window.TWEAKS.meesmanNavEur) || 100.4;
+      }
+      if (!parsed.meesmanNavHistory || !parsed.meesmanNavHistory.length) {
+        const twHist = window.TWEAKS && window.TWEAKS.meesmanNavHistory;
+        parsed.meesmanNavHistory = (twHist && twHist.length) ? twHist
+          : [{ date: new Date().toISOString().slice(0, 10), nav: parsed.meesmanNavEur }];
+      }
       return parsed;
     }
   } catch (e) {}
+  const today0 = new Date().toISOString().slice(0, 10);
   return {
     transactions: [
       ...SEED_TX.map((t, i) => ({ id: makeId() + i, ...t })),
       ...GR_SEED_TX.map((t, i) => ({ id: makeId() + 'gr' + i, ...t })),
     ],
-    widgets:       DEFAULT_WIDGETS.map(w => ({ ...w })),
-    customParties: [],
-    hiddenParties: [],
-    tileMetrics:   {},
+    widgets:            DEFAULT_WIDGETS.map(w => ({ ...w })),
+    customParties:      [],
+    hiddenParties:      [],
+    tileMetrics:        {},
+    meesmanNavEur:      100.4,
+    meesmanNavHistory:  [{ date: today0, nav: 100.4 }],
   };
 }
 

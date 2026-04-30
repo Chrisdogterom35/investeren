@@ -26,8 +26,10 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     btcSpotEur:            tweaks.btcSpotEur,
     ethSpotEur:            tweaks.ethSpotEur,
     paxgSpotEur:           tweaks.paxgSpotEur,
-    meesmanNavEur:         tweaks.meesmanNavEur,
-    meesmanNavHistory:     tweaks.meesmanNavHistory,
+    // Meesman NAV zit nu in state (synct via Gist), tweaks als fallback
+    meesmanNavEur:         state.meesmanNavEur     ?? tweaks.meesmanNavEur     ?? 100.4,
+    meesmanNavHistory:     (state.meesmanNavHistory?.length ? state.meesmanNavHistory : null)
+                           ?? tweaks.meesmanNavHistory ?? [],
     goldHistory:           state.goldHistory   || [],
     silverHistory:         state.silverHistory || [],
     btcHistory:            state.btcHistory    || [],
@@ -36,6 +38,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
   }), [tweaks.goldSpotEurPerGram, tweaks.silverSpotEurPerOunce,
        tweaks.btcSpotEur, tweaks.ethSpotEur, tweaks.paxgSpotEur,
        tweaks.meesmanNavEur, tweaks.meesmanNavHistory,
+       state.meesmanNavEur, state.meesmanNavHistory,
        state.goldHistory, state.silverHistory,
        state.btcHistory, state.ethHistory, state.paxgHistory]);
 

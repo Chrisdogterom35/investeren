@@ -292,24 +292,19 @@ function App() {
 
   const refreshSpot = React.useCallback(async () => {
     setSpotStatus(s => ({ ...s, loading: true, error: null }));
-    const [metals, crypto, meesman] = await Promise.allSettled([
+    const [metals, crypto] = await Promise.allSettled([
       fetchSpotPrices(),
       fetchCryptoPrices(),
-      fetchMeesmanNav(),
     ]);
     const updates = {};
-    if (metals.status  === 'fulfilled') {
+    if (metals.status === 'fulfilled') {
       updates.goldSpotEurPerGram    = +metals.value.goldSpotEurPerGram.toFixed(2);
       updates.silverSpotEurPerOunce = +metals.value.silverSpotEurPerOunce.toFixed(2);
     }
-    if (crypto.status  === 'fulfilled') {
+    if (crypto.status === 'fulfilled') {
       updates.btcSpotEur  = +crypto.value.btcSpotEur.toFixed(2);
       updates.ethSpotEur  = +crypto.value.ethSpotEur.toFixed(2);
       updates.paxgSpotEur = +crypto.value.paxgSpotEur.toFixed(2);
-    }
-    if (meesman.status === 'fulfilled') {
-      updates.meesmanNavEur     = +meesman.value.meesmanNavEur.toFixed(4);
-      updates.meesmanNavHistory = meesman.value.meesmanNavHistory;
     }
     if (Object.keys(updates).length) updateTweaks(tw => ({ ...tw, ...updates }));
 
@@ -330,12 +325,21 @@ function App() {
     });
 
     const errors = [
-      metals.status  === 'rejected' ? `Goud/zilver: ${metals.reason?.message}`  : null,
-      crypto.status  === 'rejected' ? `Crypto: ${crypto.reason?.message}`        : null,
-      meesman.status === 'rejected' ? `Meesman: ${meesman.reason?.message}`      : null,
+      metals.status === 'rejected' ? `Goud/zilver: ${metals.reason?.message}` : null,
+      crypto.status === 'rejected' ? `Crypto: ${crypto.reason?.message}`       : null,
     ].filter(Boolean);
     setSpotStatus({ loading: false, error: errors.length ? errors.join(' · ') : null, fetchedAt: new Date().toISOString() });
   }, [updateTweaks]);
+
+  // Meesman NAV handmatig bijwerken (opgeslagen in state → Gist-sync)
+  const updateMeesmanNav = React.useCallback((nav) => {
+    const today = new Date().toISOString().slice(0, 10);
+    setState(s => ({
+      ...s,
+      meesmanNavEur:     +nav,
+      meesmanNavHistory: appendToHistory(s.meesmanNavHistory || [], today, +nav),
+    }));
+  }, []);
 
   const importT212 = React.useCallback(async () => {
     const auth = buildT212Auth(tweaks.t212ApiKey);
@@ -436,15 +440,17 @@ function App() {
     reader.readAsText(file);
   }, []);
 
-  // spots: huidige prijzen + historische reeksen (uit state, persistent)
+  // spots: huidige prijzen + historische reeksen (uit state, persistent via Gist)
   const spots = React.useMemo(() => ({
     goldSpotEurPerGram:    tweaks.goldSpotEurPerGram,
     silverSpotEurPerOunce: tweaks.silverSpotEurPerOunce,
     btcSpotEur:            tweaks.btcSpotEur,
     ethSpotEur:            tweaks.ethSpotEur,
     paxgSpotEur:           tweaks.paxgSpotEur,
-    meesmanNavEur:         tweaks.meesmanNavEur,
-    meesmanNavHistory:     tweaks.meesmanNavHistory,
+    // Meesman: uit state (Gist-synced), tweaks als fallback
+    meesmanNavEur:         state.meesmanNavEur     ?? tweaks.meesmanNavEur     ?? 100.4,
+    meesmanNavHistory:     (state.meesmanNavHistory?.length ? state.meesmanNavHistory : null)
+                           ?? tweaks.meesmanNavHistory ?? [],
     goldHistory:           state.goldHistory   || [],
     silverHistory:         state.silverHistory || [],
     btcHistory:            state.btcHistory    || [],
@@ -453,6 +459,7 @@ function App() {
   }), [tweaks.goldSpotEurPerGram, tweaks.silverSpotEurPerOunce,
        tweaks.btcSpotEur, tweaks.ethSpotEur, tweaks.paxgSpotEur,
        tweaks.meesmanNavEur, tweaks.meesmanNavHistory,
+       state.meesmanNavEur, state.meesmanNavHistory,
        state.goldHistory, state.silverHistory,
        state.btcHistory, state.ethHistory, state.paxgHistory]);
 
@@ -532,6 +539,9 @@ function App() {
         </div>
       </nav>
 
+      {/* Meesman wekelijkse prijs-banner */}
+      <MeesmanPriceBanner state={state} onUpdate={updateMeesmanNav} />
+
       {isMobile ? (
         <>
           {mobileTab === 'home' && (
@@ -541,11 +551,8 @@ function App() {
               addTrigger={mobileAddTrigger} isMobile={true} />
           )}
           {mobileTab === 'partijen' && (
-            <MobilePartijenView summaries={summaries} spots={spots}
-              tileMetrics={state.tileMetrics || {}}
-              onSetTileMetric={(id, m) => setState(s => ({ ...s, tileMetrics: { ...(s.tileMetrics || {}), [id]: m } }))}
+            <MobilePartijenView summaries={summaries}
               onQuickAdd={() => { setMobileTab('home'); setMobileAddTrigger(t => t + 1); }}
-              onCardClick={() => setMobileTab('home')}
             />
           )}
           {mobileTab === 'transacties' && (
@@ -938,22 +945,167 @@ function MobileNav({ tab, onTab, onAdd, onSettings, tweaksOpen }) {
   );
 }
 
-function MobilePartijenView({ summaries, spots, tileMetrics, onSetTileMetric, onQuickAdd, onCardClick }) {
-  const total = summaries.reduce((s, x) => s + x.currentValueEur, 0);
+function MeesmanPriceBanner({ state, onUpdate }) {
+  const [input, setInput] = React.useState('');
+  const [dismissed, setDismissed] = React.useState(false);
+
+  const history = state.meesmanNavHistory || [];
+  const lastEntry = history.length ? history[history.length - 1] : null;
+  const lastDate  = lastEntry?.date || null;
+  const daysSince = lastDate
+    ? Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000)
+    : 999;
+
+  if (dismissed || daysSince < 7) return null;
+
+  const handleSave = () => {
+    const v = parseFloat(input.replace(',', '.'));
+    if (v > 0) { onUpdate(v); setDismissed(true); }
+  };
+
   return (
-    <div style={{ padding: '20px 14px 90px' }}>
-      <h2 style={{ margin: '0 0 16px', fontFamily: 'var(--ff-display)', fontSize: 28, fontWeight: 500, letterSpacing: '-0.015em' }}>
-        Partijen
-      </h2>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {summaries.map(s => (
-          <PartyCard key={s.party.id} summary={s} total={total} spots={spots}
-            metric={tileMetrics[s.party.id] || 'pnl_eur'}
-            onMetricChange={m => onSetTileMetric(s.party.id, m)}
-            onClick={onCardClick}
-            onQuickAdd={onQuickAdd}
-          />
+    <div style={{ background: 'var(--surface)', borderBottom: '2px solid oklch(72% 0.16 75)',
+      padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', zIndex: 40, position: 'relative' }}>
+      <span style={{ fontSize: 16 }}>📈</span>
+      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>
+        Meesman koers bijwerken
+      </span>
+      {lastEntry && (
+        <span style={{ fontSize: 11, color: 'var(--fg-muted)', fontFamily: 'var(--ff-mono)' }}>
+          Laatste: €{lastEntry.nav.toFixed(4)} op {lastEntry.date}
+          {daysSince > 0 && ` (${daysSince} dagen geleden)`}
+        </span>
+      )}
+      <input
+        type="number" step="0.01" value={input}
+        onChange={e => setInput(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && handleSave()}
+        placeholder={lastEntry ? lastEntry.nav.toFixed(2) : '100.40'}
+        style={{ width: 90, padding: '5px 8px', fontSize: 13, fontFamily: 'var(--ff-mono)',
+          background: 'var(--surface-2)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', color: 'var(--fg)', outline: 'none' }}
+      />
+      <button onClick={handleSave}
+        style={{ padding: '5px 14px', background: 'var(--accent)', color: '#fff', border: 'none',
+          borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
+        Opslaan
+      </button>
+      <button onClick={() => setDismissed(true)}
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--fg-muted)',
+          fontSize: 18, lineHeight: 1, marginLeft: 'auto', padding: '0 4px' }}>
+        ×
+      </button>
+    </div>
+  );
+}
+
+function MobilePartijenView({ summaries, onQuickAdd }) {
+  const METRICS = [
+    { key: 'all_pct', label: 'All-time %' },
+    { key: 'all_eur', label: 'All-time €' },
+    { key: 'yr_pct',  label: 'Per jaar %' },
+    { key: 'yr_eur',  label: 'Per jaar €' },
+  ];
+  const [metric, setMetric] = React.useState('all_pct');
+
+  const enriched = summaries
+    .filter(s => s.currentValueEur > 0 || s.invested > 0)
+    .map(s => {
+      const dates = (s.transactions || []).map(t => t.date).sort();
+      const firstDate = dates[0];
+      const years = firstDate
+        ? Math.max((Date.now() - new Date(firstDate).getTime()) / (365.25 * 86400000), 1/12)
+        : 1;
+      const yearlyEur = s.pnl / years;
+      // CAGR: alleen berekenen als invested > 0 en years >= 1 maand
+      const cagr = (s.invested > 0 && s.currentValueEur > 0 && years > 0.08)
+        ? (Math.pow(s.currentValueEur / s.invested, 1 / years) - 1) * 100
+        : 0;
+      return { ...s, years, yearlyEur, cagr };
+    })
+    .sort((a, b) => {
+      if (metric === 'all_pct') return (b.pnlPct  || 0) - (a.pnlPct  || 0);
+      if (metric === 'all_eur') return (b.pnl      || 0) - (a.pnl      || 0);
+      if (metric === 'yr_pct')  return (b.cagr     || 0) - (a.cagr     || 0);
+      return (b.yearlyEur || 0) - (a.yearlyEur || 0);
+    });
+
+  return (
+    <div style={{ padding: '16px 14px 100px' }}>
+      {/* Metric toggle */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        {METRICS.map(m => (
+          <button key={m.key} onClick={() => setMetric(m.key)}
+            style={{ padding: '6px 12px', fontSize: 12, fontFamily: 'inherit', cursor: 'pointer',
+              borderRadius: 999,
+              border: '1px solid ' + (metric === m.key ? 'var(--fg)' : 'var(--border)'),
+              background: metric === m.key ? 'var(--fg)' : 'transparent',
+              color: metric === m.key ? 'var(--bg)' : 'var(--fg-muted)' }}>
+            {m.label}
+          </button>
         ))}
+      </div>
+
+      {/* Totaalregel */}
+      {(() => {
+        const totalVal  = enriched.reduce((s, x) => s + x.currentValueEur, 0);
+        const totalPnl  = enriched.reduce((s, x) => s + x.pnl, 0);
+        const totalInv  = enriched.reduce((s, x) => s + x.invested, 0);
+        const totalPct  = totalInv > 0 ? (totalPnl / totalInv) * 100 : 0;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+            background: 'var(--surface)', borderRadius: 'var(--radius)', marginBottom: 10,
+            border: '1px solid var(--border)' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--ff-mono)' }}>Totaal</div>
+              <div style={{ fontFamily: 'var(--ff-mono)', fontSize: 15, fontWeight: 600 }}>
+                {fmtEur(totalVal)}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right', fontFamily: 'var(--ff-mono)', fontSize: 13,
+              color: totalPnl >= 0 ? 'var(--positive)' : 'var(--negative)', fontWeight: 600 }}>
+              {totalPnl >= 0 ? '+' : ''}{fmtEur(totalPnl)}<br/>
+              <span style={{ fontSize: 11 }}>{totalPct >= 0 ? '+' : ''}{totalPct.toFixed(1)}%</span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Party list */}
+      <div style={{ display: 'grid', gap: 6 }}>
+        {enriched.map(s => {
+          const isPct = metric === 'all_pct' || metric === 'yr_pct';
+          const val   = metric === 'all_pct' ? s.pnlPct
+                      : metric === 'all_eur' ? s.pnl
+                      : metric === 'yr_pct'  ? s.cagr
+                      : s.yearlyEur;
+          const displayVal = isPct
+            ? `${val >= 0 ? '+' : ''}${(val || 0).toFixed(1)}%`
+            : `${val >= 0 ? '+' : '−'}${fmtEur(Math.abs(val || 0))}`;
+
+          return (
+            <div key={s.party.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
+              padding: '11px 12px', background: 'var(--surface)', borderRadius: 'var(--radius)' }}>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: s.party.color, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.party.name}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontFamily: 'var(--ff-mono)' }}>
+                  {fmtEur(s.currentValueEur)}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right', fontFamily: 'var(--ff-mono)', fontSize: 14, fontWeight: 600,
+                color: (val || 0) > 0 ? 'var(--positive)' : (val || 0) < 0 ? 'var(--negative)' : 'var(--fg-muted)',
+                flexShrink: 0 }}>
+                {displayVal}
+                {metric === 'yr_pct' && <div style={{ fontSize: 9, color: 'var(--fg-dim)', fontWeight: 400 }}>
+                  CAGR {s.years.toFixed(1)}j
+                </div>}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
