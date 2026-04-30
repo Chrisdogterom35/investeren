@@ -210,13 +210,21 @@ function App() {
     try { localStorage.setItem(GIST_CFG_KEY, JSON.stringify(gistConfig)); } catch {}
   }, [gistConfig]);
 
-  // Lees Gist ID uit URL-hash (#gist=<id>) — handig voor setup op nieuw apparaat/beginscherm
+  // Lees Gist config uit URL-hash bij opstarten
+  // #pat=xxx&gist=yyy → volledige beginscherm-link, URL bewaren zodat shortcut blijft werken
+  // #gist=yyy         → setup-link (alleen Gist ID), URL opschonen, instellingen openen voor PAT
   React.useEffect(() => {
-    const m = window.location.hash.match(/[#&]gist=([a-zA-Z0-9]+)/);
-    if (m) {
-      setGistConfig(c => ({ ...c, gistId: c.gistId || m[1] }));
+    const hash = window.location.hash;
+    const patM  = hash.match(/[#&]pat=([^&#\s]+)/);
+    const gistM = hash.match(/[#&]gist=([a-zA-Z0-9]+)/);
+    if (patM && gistM) {
+      // Volledige beginscherm-URL: stil configureren, URL laten staan zodat shortcut altijd werkt
+      setGistConfig({ pat: decodeURIComponent(patM[1]), gistId: gistM[1] });
+    } else if (gistM) {
+      // Alleen Gist ID: opschonen + instellingen openen voor PAT-invoer
+      setGistConfig(c => ({ ...c, gistId: c.gistId || gistM[1] }));
       history.replaceState(null, '', window.location.pathname + window.location.search);
-      setTweaksOpen(true); // open instellingen zodat gebruiker PAT kan invullen
+      setTweaksOpen(true);
     }
   }, []);
 
@@ -602,16 +610,21 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
 
   const hasT212Auth = !!(tweaks.t212ApiKey || '').trim();
   const gistReady   = !!(gistConfig?.pat && gistConfig?.gistId);
-  const [copyDone, setCopyDone] = React.useState(false);
+  const [copyDone, setCopyDone]         = React.useState(false);
+  const [homeCopyDone, setHomeCopyDone] = React.useState(false);
 
   const copyShareUrl = () => {
     const url = `${location.origin}${location.pathname}#gist=${gistConfig.gistId}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setCopyDone(true);
-      setTimeout(() => setCopyDone(false), 2500);
-    }).catch(() => {
-      prompt('Kopieer deze link:', url);
-    });
+    navigator.clipboard.writeText(url)
+      .then(() => { setCopyDone(true); setTimeout(() => setCopyDone(false), 2500); })
+      .catch(() => { prompt('Kopieer deze link:', url); });
+  };
+
+  const copyHomeUrl = () => {
+    const url = `${location.origin}${location.pathname}#pat=${encodeURIComponent(gistConfig.pat)}&gist=${gistConfig.gistId}`;
+    navigator.clipboard.writeText(url)
+      .then(() => { setHomeCopyDone(true); setTimeout(() => setHomeCopyDone(false), 2500); })
+      .catch(() => { prompt('Kopieer beginscherm-link (alleen voor eigen apparaat):', url); });
   };
 
   return (
@@ -675,22 +688,41 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
                 ✓ Gesynchroniseerd {new Date(syncStatus.syncedAt).toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'})}
               </div>
             )}
-            {/* Setup-link delen */}
+            {/* Links voor ander apparaat / beginscherm */}
             {gistReady && (
-              <div style={{ padding:'10px 12px', background:'var(--surface-2)', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>
-                <div style={{ fontSize:11, fontWeight:600, color:'var(--fg-muted)', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.05em' }}>
-                  Beginscherm / ander apparaat
+              <div style={{ display:'grid', gap:10, padding:'12px', background:'var(--surface-2)', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>
+                <div style={{ fontSize:11, fontWeight:600, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+                  Ander apparaat of beginscherm
                 </div>
-                <div style={{ fontSize:11, color:'var(--fg-dim)', lineHeight:1.5, marginBottom:8 }}>
-                  Kopieer deze link en open hem op je andere apparaat of beginscherm-app. Het Gist ID wordt dan automatisch ingevuld — je hoeft alleen nog je PAT in te voeren.
+
+                {/* Beginscherm-link (met PAT) */}
+                <div>
+                  <div style={{ fontSize:12, color:'var(--fg)', fontWeight:500, marginBottom:3 }}>⌂ Beginscherm-link</div>
+                  <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.5, marginBottom:6 }}>
+                    Open deze link op je telefoon en kies <b>"Zet op beginscherm"</b>. De app is daarna direct gesynchroniseerd — geen PAT invoeren nodig.
+                  </div>
+                  <button onClick={copyHomeUrl}
+                    style={{ width:'100%', padding:'8px 12px', fontSize:12, borderRadius:'var(--radius)',
+                      cursor:'pointer', fontFamily:'inherit', fontWeight:600, border:'none',
+                      background: homeCopyDone ? 'var(--positive)' : 'var(--accent)', color:'#fff', transition:'background .2s' }}>
+                    {homeCopyDone ? '✓ Gekopieerd!' : '⌂ Kopieer beginscherm-link'}
+                  </button>
                 </div>
-                <button onClick={copyShareUrl}
-                  style={{ width:'100%', padding:'8px 12px', fontSize:12, borderRadius:'var(--radius)', cursor:'pointer',
-                    fontFamily:'inherit', fontWeight:500, border:'none',
-                    background: copyDone ? 'var(--positive)' : 'var(--accent)',
-                    color: '#fff', transition:'background .2s' }}>
-                  {copyDone ? '✓ Gekopieerd!' : '⎘ Kopieer setup-link'}
-                </button>
+
+                {/* Setup-link (alleen Gist ID) */}
+                <div style={{ borderTop:'1px solid var(--border)', paddingTop:10 }}>
+                  <div style={{ fontSize:12, color:'var(--fg)', fontWeight:500, marginBottom:3 }}>⎘ Setup-link (ander apparaat)</div>
+                  <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.5, marginBottom:6 }}>
+                    Gist ID wordt automatisch ingevuld. Je moet op het andere apparaat nog je PAT invoeren.
+                  </div>
+                  <button onClick={copyShareUrl}
+                    style={{ width:'100%', padding:'7px 12px', fontSize:12, borderRadius:'var(--radius)',
+                      cursor:'pointer', fontFamily:'inherit', border:'1px solid var(--border)',
+                      background: copyDone ? 'var(--positive)' : 'transparent',
+                      color: copyDone ? '#fff' : 'var(--fg)', transition:'background .2s, color .2s' }}>
+                    {copyDone ? '✓ Gekopieerd!' : '⎘ Kopieer setup-link'}
+                  </button>
+                </div>
               </div>
             )}
             {!gistReady && (
