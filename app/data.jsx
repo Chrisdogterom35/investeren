@@ -66,111 +66,30 @@ const d = (monthsAgo, day = 15) => {
   return dt.toISOString().slice(0, 10);
 };
 
-// Meesman transacties geïmporteerd vanuit Excel (Book2.xlsx)
-// Normaal = gewone rekening · Pensioen = pensioenrekening (zelfde fonds, apart genoteerd)
-const SEED_TX = [
-  { party:'meesman', type:'koop', date:'2025-01-12', quantity:6.705,  unitPriceEur:88.2833, feeEur:1.48, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-01-13', quantity:1.1246, unitPriceEur:88.6971, feeEur:0.25, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-01-17', quantity:0.5522, unitPriceEur:90.3218, feeEur:0.12, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-01-24', quantity:1.1049, unitPriceEur:90.2836, feeEur:0.25, note:'Pensioen' },
-  { party:'meesman', type:'koop', date:'2025-02-07', quantity:1.0914, unitPriceEur:91.3943, feeEur:0.25, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-02-07', quantity:1.0914, unitPriceEur:91.3943, feeEur:0.25, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-02-07', quantity:1.6371, unitPriceEur:91.3943, feeEur:0.37, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-02-14', quantity:2.4535, unitPriceEur:91.4765, feeEur:0.56, note:'Pensioen' },
-  { party:'meesman', type:'koop', date:'2025-02-14', quantity:8.1783, unitPriceEur:91.4765, feeEur:1.87, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-03-07', quantity:1.1741, unitPriceEur:84.9613, feeEur:0.25, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-03-28', quantity:1.2007, unitPriceEur:83.0794, feeEur:0.25, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-05-09', quantity:1.5744, unitPriceEur:81.6632, feeEur:0.32, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-05-09', quantity:2.4430, unitPriceEur:81.6632, feeEur:0.50, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-05-09', quantity:1.3436, unitPriceEur:81.6632, feeEur:0.27, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-06-05', quantity:0.5926, unitPriceEur:84.1696, feeEur:0.12, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-06-05', quantity:2.3702, unitPriceEur:84.1696, feeEur:0.50, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-06-13', quantity:2.9775, unitPriceEur:83.7559, feeEur:0.62, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-06-23', quantity:2.9697, unitPriceEur:83.9741, feeEur:0.62, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-06-27', quantity:2.3476, unitPriceEur:84.9795, feeEur:0.50, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-07-07', quantity:0.8671, unitPriceEur:85.3903, feeEur:0.19, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-08-01', quantity:4.3108, unitPriceEur:86.4645, feeEur:0.93, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-08-01', quantity:2.3073, unitPriceEur:86.4645, feeEur:0.50, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-08-08', quantity:4.5415, unitPriceEur:87.9118, feeEur:1.00, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-08-11', quantity:0.4703, unitPriceEur:87.1998, feeEur:0.00, note:'Normaal — geen kosten' },
-  { party:'meesman', type:'koop', date:'2025-08-11', quantity:0.0383, unitPriceEur:87.1998, feeEur:0.00, note:'Pensioen — geen kosten' },
-  { party:'meesman', type:'koop', date:'2025-08-29', quantity:6.5211, unitPriceEur:87.9546, feeEur:1.43, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2025-09-26', quantity:3.3131, unitPriceEur:90.3241, feeEur:0.75, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2026-01-16', quantity:0.7690, unitPriceEur:97.2780, feeEur:0.19, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2026-01-30', quantity:8.7653, unitPriceEur:95.2517, feeEur:2.09, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2026-02-24', quantity:1.8653, unitPriceEur:96.9905, feeEur:0.45, note:'Normaal' },
-  { party:'meesman', type:'koop', date:'2026-03-02', quantity:3.5791, unitPriceEur:97.5442, feeEur:0.87, note:'Normaal' },
-];
-
-// ===== GoldRepublic zilver-transacties (uit maandafschriften) =====
-// silverUnit:'gram' → intern opgeslagen als oz via silverToOz()
-// unitPriceEur = transactiewaarde / volume (€/gram)
-// feeEur = fee + handling costs (volledig)
-const GR_SEED_TX = [
-  // ── 2025 ──
-  { party:'goldrepublic', type:'koop',    date:'2025-05-01', quantity:52.530, unitPriceEur:0.9381, feeEur:0.72, metalType:'zilver', silverUnit:'gram', note:'Spaarplan zilver mei 2025' },
-  { party:'goldrepublic', type:'koop',    date:'2025-06-02', quantity:51.109, unitPriceEur:0.9644, feeEur:0.71, metalType:'zilver', silverUnit:'gram', note:'Spaarplan zilver jun 2025' },
-  { party:'goldrepublic', type:'kosten',  date:'2025-06-16', amountEur:0.04,  note:'Opslagkosten mei 2025' },
-  { party:'goldrepublic', type:'koop',    date:'2025-07-11', quantity:47.211, unitPriceEur:1.0598, feeEur:0.92, metalType:'zilver', silverUnit:'gram', note:'Market order jul 2025' },
-  { party:'goldrepublic', type:'kosten',  date:'2025-07-15', amountEur:0.10,  note:'Opslagkosten jun 2025' },
-  { party:'goldrepublic', type:'koop',    date:'2025-07-30', quantity:45.906, unitPriceEur:1.0891, feeEur:0.91, metalType:'zilver', silverUnit:'gram', note:'Market order jul 2025' },
-  { party:'goldrepublic', type:'kosten',  date:'2025-08-15', amountEur:0.13,  note:'Opslagkosten jul 2025' },
-  { party:'goldrepublic', type:'koop',    date:'2025-08-25', quantity:44.777, unitPriceEur:1.0966, feeEur:0.90, metalType:'zilver', silverUnit:'gram', note:'Market order aug 2025' },
-  { party:'goldrepublic', type:'kosten',  date:'2025-09-15', amountEur:0.22,  note:'Opslagkosten aug 2025' },
-  { party:'goldrepublic', type:'koop',    date:'2025-09-24', quantity:39.661, unitPriceEur:1.2390, feeEur:0.86, metalType:'zilver', silverUnit:'gram', note:'Market order sep 2025' },
-  { party:'goldrepublic', type:'kosten',  date:'2025-10-15', amountEur:0.29,  note:'Opslagkosten sep 2025' },
-  { party:'goldrepublic', type:'kosten',  date:'2025-11-17', amountEur:0.40,  note:'Opslagkosten okt 2025' },
-  { party:'goldrepublic', type:'kosten',  date:'2025-12-15', amountEur:0.40,  note:'Opslagkosten nov 2025' },
-  // ── 2026 ──
-  { party:'goldrepublic', type:'kosten',  date:'2026-01-16', amountEur:0.52,  note:'Opslagkosten dec 2025' },
-  { party:'goldrepublic', type:'verkoop', date:'2026-01-26', quantity:281.194, unitPriceEur:2.9625, feeEur:8.33, metalType:'zilver', silverUnit:'gram', note:'Verkoop volledig zilver' },
-  { party:'goldrepublic', type:'kosten',  date:'2026-02-16', amountEur:0.56,  note:'Opslagkosten jan 2026' },
-  { party:'goldrepublic', type:'koop',    date:'2026-03-02', quantity:36.884, unitPriceEur:2.6752, feeEur:1.32, metalType:'zilver', silverUnit:'gram', note:'Market order mrt 2026' },
-  { party:'goldrepublic', type:'koop',    date:'2026-03-24', quantity:49.362, unitPriceEur:1.9967, feeEur:1.43, metalType:'zilver', silverUnit:'gram', note:'Market order mrt 2026' },
-  { party:'goldrepublic', type:'kosten',  date:'2026-04-15', amountEur:0.11,  note:'Opslagkosten mrt 2026' },
-  { party:'goldrepublic', type:'koop',    date:'2026-04-26', quantity:46.101, unitPriceEur:2.1388, feeEur:1.40, metalType:'zilver', silverUnit:'gram', note:'Market order apr 2026' },
-];
-
-const PAXG_SEED_TX = [
-  { id:'finst_paxg_2023_12_18', party:'finst-paxg', type:'koop', date:'2023-12-18', quantity:0.005415613027859476, unitPriceEur:1846.51302605, note:'Finst PAXG' },
-  { id:'finst_paxg_2024_03_26', party:'finst-paxg', type:'koop', date:'2024-03-26', quantity:0.005982212622369096, unitPriceEur:2012.63324459, note:'Finst PAXG' },
-  { id:'finst_paxg_2024_04_12', party:'finst-paxg', type:'koop', date:'2024-04-12', quantity:0.02213109303305034, unitPriceEur:2259.26482372, note:'Finst PAXG' },
-  { id:'finst_paxg_2024_12_06', party:'finst-paxg', type:'koop', date:'2024-12-06', quantity:0.003993469596811627, unitPriceEur:2504.08817635, note:'Finst PAXG' },
-  { id:'finst_paxg_2024_12_07', party:'finst-paxg', type:'koop', date:'2024-12-07', quantity:0.049549621554225245, unitPriceEur:2506.17453988, note:'Finst PAXG' },
-  { id:'finst_paxg_2025_03_24', party:'finst-paxg', type:'koop', date:'2025-03-24', quantity:0.008837900998512853, unitPriceEur:2828.72596154, note:'Finst PAXG' },
-  { id:'finst_paxg_2025_04_24', party:'finst-paxg', type:'koop', date:'2025-04-24', quantity:0.0168719328367289, unitPriceEur:2963.50160256, note:'Finst PAXG' },
-  { id:'finst_paxg_2025_05_24', party:'finst-paxg', type:'koop', date:'2025-05-24', quantity:0.01674231, unitPriceEur:2986.44571747, note:'Finst PAXG Auto' },
-  { id:'finst_paxg_2025_06_24', party:'finst-paxg', type:'koop', date:'2025-06-24', quantity:0.01721944, unitPriceEur:2904.85637164, note:'Finst PAXG' },
-  { id:'finst_paxg_2025_07_24', party:'finst-paxg', type:'koop', date:'2025-07-24', quantity:0.01728882, unitPriceEur:2892.04237189, note:'Finst PAXG Auto' },
-  { id:'finst_paxg_2025_08_24', party:'finst-paxg', type:'koop', date:'2025-08-24', quantity:0.01739103, unitPriceEur:2875.62036291, note:'Finst PAXG' },
-  { id:'finst_paxg_2025_09_24', party:'finst-paxg', type:'koop', date:'2025-09-24', quantity:0.01545516, unitPriceEur:3235.16547224, note:'Finst PAXG Auto' },
-  { id:'finst_paxg_2026_02_24', party:'finst-paxg', type:'koop', date:'2026-02-24', quantity:0.01129594, unitPriceEur:4427.25439406, note:'Finst PAXG' },
-  { id:'finst_paxg_2026_03_24', party:'finst-paxg', type:'koop', date:'2026-03-24', quantity:0.03937109, unitPriceEur:3809.90213885, note:'Finst PAXG' },
-  { id:'finst_paxg_2026_04_24', party:'finst-paxg', type:'koop', date:'2026-04-24', quantity:0.0373822, unitPriceEur:4012.60492962, note:'Finst PAXG Auto' },
-];
-
-const BTC_SEED_TX = [
-  { id:'finst_btc_2024_02_29', party:'finst-btc', type:'koop', date:'2024-02-29', quantity:0.00085623, unitPriceEur:58395.52456700, note:'Finst BTC' },
-  { id:'finst_btc_2024_03_04', party:'finst-btc', type:'koop', date:'2024-03-04', quantity:0.00113883, unitPriceEur:61466.59290676, note:'Finst BTC' },
-  { id:'finst_btc_2024_03_12_57_38', party:'finst-btc', type:'koop', date:'2024-03-12', quantity:0.00086852, unitPriceEur:66066.41182702, note:'Finst BTC' },
-  { id:'finst_btc_2024_03_12_40_01', party:'finst-btc', type:'koop', date:'2024-03-12', quantity:0.00060528, unitPriceEur:66101.63891092, note:'Finst BTC' },
-  { id:'finst_btc_2024_04_10_100', party:'finst-btc', type:'koop', date:'2024-04-10', quantity:0.00159005, unitPriceEur:62891.10405333, note:'Finst BTC' },
-  { id:'finst_btc_2024_04_10_300', party:'finst-btc', type:'koop', date:'2024-04-10', quantity:0.00476801, unitPriceEur:62919.33112556, note:'Finst BTC' },
-  { id:'finst_btc_2024_04_10_35', party:'finst-btc', type:'koop', date:'2024-04-10', quantity:0.00055565, unitPriceEur:62989.29182039, note:'Finst BTC' },
-  { id:'finst_btc_2024_04_11_sell', party:'finst-btc', type:'verkoop', date:'2024-04-11', quantity:0.00663876, unitPriceEur:65524.28465557, note:'Finst BTC verkoop' },
-  { id:'finst_btc_2025_02_05', party:'finst-btc', type:'koop', date:'2025-02-05', quantity:0.00107528, unitPriceEur:92999.03281006, note:'Finst BTC' },
-  { id:'finst_btc_2025_02_25', party:'finst-btc', type:'koop', date:'2025-02-25', quantity:0.00058139, unitPriceEur:86000.79120728, note:'Finst BTC' },
-  { id:'finst_btc_2025_04_06_out', party:'finst-btc', type:'opname', date:'2025-04-06', quantity:0.0001, unitPriceEur:50000.00000000, amountEur:5.00, note:'Finst BTC crypto opname' },
-  { id:'finst_btc_2026_02_08', party:'finst-btc', type:'koop', date:'2026-02-08', quantity:0.0016594, unitPriceEur:60268.77184525, note:'Finst BTC' },
-  { id:'finst_btc_2026_04_13_out', party:'finst-btc', type:'opname', date:'2026-04-13', quantity:0.00005, unitPriceEur:9600.00000000, amountEur:0.48, note:'Finst BTC crypto opname' },
-];
-
-const ETH_SEED_TX = [
-  { id:'finst_eth_2024_03_12', party:'finst-eth', type:'koop', date:'2024-03-12', quantity:0.02034484070272297, unitPriceEur:3686.43830128, note:'Finst ETH' },
-];
-
 const MEESMAN_NAV_SEED_HISTORY = [
-  ...SEED_TX.map(t => ({ date: t.date, nav: +(+t.unitPriceEur).toFixed(4) })),
+  { date: '2025-01-12', nav: 88.2833 },
+  { date: '2025-01-13', nav: 88.6971 },
+  { date: '2025-01-17', nav: 90.3218 },
+  { date: '2025-01-24', nav: 90.2836 },
+  { date: '2025-02-07', nav: 91.3943 },
+  { date: '2025-02-14', nav: 91.4765 },
+  { date: '2025-03-07', nav: 84.9613 },
+  { date: '2025-03-28', nav: 83.0794 },
+  { date: '2025-05-09', nav: 81.6632 },
+  { date: '2025-06-05', nav: 84.1696 },
+  { date: '2025-06-13', nav: 83.7559 },
+  { date: '2025-06-23', nav: 83.9741 },
+  { date: '2025-06-27', nav: 84.9795 },
+  { date: '2025-07-07', nav: 85.3903 },
+  { date: '2025-08-01', nav: 86.4645 },
+  { date: '2025-08-08', nav: 87.9118 },
+  { date: '2025-08-11', nav: 87.1998 },
+  { date: '2025-08-29', nav: 87.9546 },
+  { date: '2025-09-26', nav: 90.3241 },
+  { date: '2026-01-16', nav: 97.2780 },
+  { date: '2026-01-30', nav: 95.2517 },
+  { date: '2026-02-24', nav: 96.9905 },
+  { date: '2026-03-02', nav: 97.5442 },
   { date: '2026-04-10', nav: 96.0370 },
   { date: '2026-04-24', nav: 100.0430 },
   { date: '2026-05-05', nav: 101.1950 },
@@ -213,16 +132,7 @@ function loadState() {
       if (!parsed.customParties) parsed.customParties = [];
       if (!parsed.hiddenParties) parsed.hiddenParties = [];
       if (!parsed.tileMetrics)   parsed.tileMetrics   = {};
-      // Migration: voeg GoldRepublic-transacties toe als ze nog niet bestaan
-      const hasGR = parsed.transactions.some(t => t.party === 'goldrepublic');
-      if (!hasGR) {
-        const grTxs = GR_SEED_TX.map((t, i) => ({ id: makeId() + 'gr' + i, ...t }));
-        parsed.transactions = [...parsed.transactions, ...grTxs];
-      }
-      const existingIds = new Set(parsed.transactions.map(t => t.id));
-      const missingSeedTxs = [...PAXG_SEED_TX, ...BTC_SEED_TX, ...ETH_SEED_TX]
-        .filter(t => !existingIds.has(t.id));
-      if (missingSeedTxs.length) parsed.transactions = [...parsed.transactions, ...missingSeedTxs];
+      parsed.transactions = [];
       // Migration: Meesman NAV verhuisd van tweaks naar state
       if (parsed.meesmanNavEur == null) {
         parsed.meesmanNavEur = (window.TWEAKS && window.TWEAKS.meesmanNavEur) || 100.4;
@@ -239,13 +149,7 @@ function loadState() {
     }
   } catch (e) {}
   return {
-    transactions: [
-      ...SEED_TX.map((t, i) => ({ id: makeId() + i, ...t })),
-      ...GR_SEED_TX.map((t, i) => ({ id: makeId() + 'gr' + i, ...t })),
-      ...PAXG_SEED_TX,
-      ...BTC_SEED_TX,
-      ...ETH_SEED_TX,
-    ],
+    transactions: [],
     widgets:            DEFAULT_WIDGETS.map(w => ({ ...w })),
     customParties:      [],
     hiddenParties:      [],
@@ -256,7 +160,10 @@ function loadState() {
 }
 
 function saveState(state) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  try {
+    const { transactions, ...localSettings } = state;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...localSettings, transactions: [] }));
+  } catch (e) {}
 }
 
 const TX_TYPES = [
@@ -705,7 +612,7 @@ function fmtMonth(ym) {
 }
 
 Object.assign(window, {
-  PARTIES, TX_TYPES, TX_LABELS, SEED_TX, GR_SEED_TX,
+  PARTIES, TX_TYPES, TX_LABELS,
   DEFAULT_MEESMAN_NAV_EUR, MEESMAN_NAV_SEED_HISTORY, mergePriceHistory, normalizeMeesmanHistory,
   WIDGET_REGISTRY, DEFAULT_WIDGETS,
   OZ_TO_GRAM, silverToOz, goldToGram,

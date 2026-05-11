@@ -89,31 +89,6 @@ function rowToTx(r) {
   return t;
 }
 
-function txMergeKey(t) {
-  if (t?.id) return t.id;
-  return [
-    t?.party || '',
-    t?.type || '',
-    t?.date || '',
-    t?.quantity ?? '',
-    t?.unitPriceEur ?? '',
-    t?.amountEur ?? '',
-    t?.note || '',
-  ].join('|');
-}
-
-function mergeTransactions(localTxs = [], remoteTxs = []) {
-  const merged = new Map();
-  [...localTxs, ...remoteTxs].forEach(tx => {
-    if (!tx) return;
-    merged.set(txMergeKey(tx), tx);
-  });
-  return [...merged.values()].sort((a, b) =>
-    (a.date || '').localeCompare(b.date || '') ||
-    (a.id || '').localeCompare(b.id || '')
-  );
-}
-
 // Laad alles: instellingen uit portfolio-tabel, transacties uit transactions-tabel
 async function supabaseLoadAll(client) {
   const [settingsRes, txRes, priceRes] = await Promise.all([
@@ -485,7 +460,7 @@ function App() {
           return {
             ...s,
             ...data,
-            transactions: data.transactions?.length ? mergeTransactions(s.transactions, data.transactions) : s.transactions,
+            transactions: data.transactions?.length ? data.transactions : s.transactions,
             meesmanNavEur: meesman.currentNav,
             meesmanNavHistory: meesman.history,
             goldHistory:       mergePriceHistory(s.goldHistory,       data.goldHistory),
