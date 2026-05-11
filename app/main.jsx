@@ -33,9 +33,17 @@ function appendToHistory(existing, date, price) {
 }
 
 // ── Supabase helpers ──────────────────────────────────────────
+const SUPABASE_DEFAULTS = {
+  url:     'https://xlmbpohjlcwjubgiyjaw.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsbWJwb2hqbGN3anViZ2l5amF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjIyODksImV4cCI6MjA5MzYzODI4OX0.BXbY5_stirCdFLuXleBHu1VouYm1cguVZd3bjkygHlo',
+};
+
 function loadSupabaseConfig() {
-  try { return JSON.parse(localStorage.getItem(SUPABASE_CFG_KEY)) || { url: '', anonKey: '' }; }
-  catch { return { url: '', anonKey: '' }; }
+  try {
+    const stored = JSON.parse(localStorage.getItem(SUPABASE_CFG_KEY));
+    if (stored?.url && stored?.anonKey) return stored;
+  } catch {}
+  return { ...SUPABASE_DEFAULTS };
 }
 
 function getSupabaseClient(cfg) {
