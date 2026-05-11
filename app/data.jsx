@@ -131,6 +131,44 @@ const GR_SEED_TX = [
   { party:'goldrepublic', type:'koop',    date:'2026-04-26', quantity:46.101, unitPriceEur:2.1388, feeEur:1.40, metalType:'zilver', silverUnit:'gram', note:'Market order apr 2026' },
 ];
 
+const PAXG_SEED_TX = [
+  { id:'finst_paxg_2023_12_18', party:'finst-paxg', type:'koop', date:'2023-12-18', quantity:0.005415613027859476, unitPriceEur:1846.51302605, note:'Finst PAXG' },
+  { id:'finst_paxg_2024_03_26', party:'finst-paxg', type:'koop', date:'2024-03-26', quantity:0.005982212622369096, unitPriceEur:2012.63324459, note:'Finst PAXG' },
+  { id:'finst_paxg_2024_04_12', party:'finst-paxg', type:'koop', date:'2024-04-12', quantity:0.02213109303305034, unitPriceEur:2259.26482372, note:'Finst PAXG' },
+  { id:'finst_paxg_2024_12_06', party:'finst-paxg', type:'koop', date:'2024-12-06', quantity:0.003993469596811627, unitPriceEur:2504.08817635, note:'Finst PAXG' },
+  { id:'finst_paxg_2024_12_07', party:'finst-paxg', type:'koop', date:'2024-12-07', quantity:0.049549621554225245, unitPriceEur:2506.17453988, note:'Finst PAXG' },
+  { id:'finst_paxg_2025_03_24', party:'finst-paxg', type:'koop', date:'2025-03-24', quantity:0.008837900998512853, unitPriceEur:2828.72596154, note:'Finst PAXG' },
+  { id:'finst_paxg_2025_04_24', party:'finst-paxg', type:'koop', date:'2025-04-24', quantity:0.0168719328367289, unitPriceEur:2963.50160256, note:'Finst PAXG' },
+  { id:'finst_paxg_2025_05_24', party:'finst-paxg', type:'koop', date:'2025-05-24', quantity:0.01674231, unitPriceEur:2986.44571747, note:'Finst PAXG Auto' },
+  { id:'finst_paxg_2025_06_24', party:'finst-paxg', type:'koop', date:'2025-06-24', quantity:0.01721944, unitPriceEur:2904.85637164, note:'Finst PAXG' },
+  { id:'finst_paxg_2025_07_24', party:'finst-paxg', type:'koop', date:'2025-07-24', quantity:0.01728882, unitPriceEur:2892.04237189, note:'Finst PAXG Auto' },
+  { id:'finst_paxg_2025_08_24', party:'finst-paxg', type:'koop', date:'2025-08-24', quantity:0.01739103, unitPriceEur:2875.62036291, note:'Finst PAXG' },
+  { id:'finst_paxg_2025_09_24', party:'finst-paxg', type:'koop', date:'2025-09-24', quantity:0.01545516, unitPriceEur:3235.16547224, note:'Finst PAXG Auto' },
+  { id:'finst_paxg_2026_02_24', party:'finst-paxg', type:'koop', date:'2026-02-24', quantity:0.01129594, unitPriceEur:4427.25439406, note:'Finst PAXG' },
+  { id:'finst_paxg_2026_03_24', party:'finst-paxg', type:'koop', date:'2026-03-24', quantity:0.03937109, unitPriceEur:3809.90213885, note:'Finst PAXG' },
+  { id:'finst_paxg_2026_04_24', party:'finst-paxg', type:'koop', date:'2026-04-24', quantity:0.0373822, unitPriceEur:4012.60492962, note:'Finst PAXG Auto' },
+];
+
+const BTC_SEED_TX = [
+  { id:'finst_btc_2024_02_29', party:'finst-btc', type:'koop', date:'2024-02-29', quantity:0.00085623, unitPriceEur:58395.52456700, note:'Finst BTC' },
+  { id:'finst_btc_2024_03_04', party:'finst-btc', type:'koop', date:'2024-03-04', quantity:0.00113883, unitPriceEur:61466.59290676, note:'Finst BTC' },
+  { id:'finst_btc_2024_03_12_57_38', party:'finst-btc', type:'koop', date:'2024-03-12', quantity:0.00086852, unitPriceEur:66066.41182702, note:'Finst BTC' },
+  { id:'finst_btc_2024_03_12_40_01', party:'finst-btc', type:'koop', date:'2024-03-12', quantity:0.00060528, unitPriceEur:66101.63891092, note:'Finst BTC' },
+  { id:'finst_btc_2024_04_10_100', party:'finst-btc', type:'koop', date:'2024-04-10', quantity:0.00159005, unitPriceEur:62891.10405333, note:'Finst BTC' },
+  { id:'finst_btc_2024_04_10_300', party:'finst-btc', type:'koop', date:'2024-04-10', quantity:0.00476801, unitPriceEur:62919.33112556, note:'Finst BTC' },
+  { id:'finst_btc_2024_04_10_35', party:'finst-btc', type:'koop', date:'2024-04-10', quantity:0.00055565, unitPriceEur:62989.29182039, note:'Finst BTC' },
+  { id:'finst_btc_2024_04_11_sell', party:'finst-btc', type:'verkoop', date:'2024-04-11', quantity:0.00663876, unitPriceEur:65524.28465557, note:'Finst BTC verkoop' },
+  { id:'finst_btc_2025_02_05', party:'finst-btc', type:'koop', date:'2025-02-05', quantity:0.00107528, unitPriceEur:92999.03281006, note:'Finst BTC' },
+  { id:'finst_btc_2025_02_25', party:'finst-btc', type:'koop', date:'2025-02-25', quantity:0.00058139, unitPriceEur:86000.79120728, note:'Finst BTC' },
+  { id:'finst_btc_2025_04_06_out', party:'finst-btc', type:'opname', date:'2025-04-06', quantity:0.0001, unitPriceEur:50000.00000000, amountEur:5.00, note:'Finst BTC crypto opname' },
+  { id:'finst_btc_2026_02_08', party:'finst-btc', type:'koop', date:'2026-02-08', quantity:0.0016594, unitPriceEur:60268.77184525, note:'Finst BTC' },
+  { id:'finst_btc_2026_04_13_out', party:'finst-btc', type:'opname', date:'2026-04-13', quantity:0.00005, unitPriceEur:9600.00000000, amountEur:0.48, note:'Finst BTC crypto opname' },
+];
+
+const ETH_SEED_TX = [
+  { id:'finst_eth_2024_03_12', party:'finst-eth', type:'koop', date:'2024-03-12', quantity:0.02034484070272297, unitPriceEur:3686.43830128, note:'Finst ETH' },
+];
+
 const MEESMAN_NAV_SEED_HISTORY = [
   ...SEED_TX.map(t => ({ date: t.date, nav: +(+t.unitPriceEur).toFixed(4) })),
   { date: '2026-04-10', nav: 96.0370 },
@@ -181,6 +219,10 @@ function loadState() {
         const grTxs = GR_SEED_TX.map((t, i) => ({ id: makeId() + 'gr' + i, ...t }));
         parsed.transactions = [...parsed.transactions, ...grTxs];
       }
+      const existingIds = new Set(parsed.transactions.map(t => t.id));
+      const missingSeedTxs = [...PAXG_SEED_TX, ...BTC_SEED_TX, ...ETH_SEED_TX]
+        .filter(t => !existingIds.has(t.id));
+      if (missingSeedTxs.length) parsed.transactions = [...parsed.transactions, ...missingSeedTxs];
       // Migration: Meesman NAV verhuisd van tweaks naar state
       if (parsed.meesmanNavEur == null) {
         parsed.meesmanNavEur = (window.TWEAKS && window.TWEAKS.meesmanNavEur) || 100.4;
@@ -200,6 +242,9 @@ function loadState() {
     transactions: [
       ...SEED_TX.map((t, i) => ({ id: makeId() + i, ...t })),
       ...GR_SEED_TX.map((t, i) => ({ id: makeId() + 'gr' + i, ...t })),
+      ...PAXG_SEED_TX,
+      ...BTC_SEED_TX,
+      ...ETH_SEED_TX,
     ],
     widgets:            DEFAULT_WIDGETS.map(w => ({ ...w })),
     customParties:      [],
@@ -255,6 +300,9 @@ function summarizeParty(party, transactions, spots) {
   let goldQty = 0;   // for goldrepublic
   let silverQty = 0; // for goldrepublic
   let costBasis = 0;
+  let realizedCostBasis = 0;
+  let realizedPnl = 0;
+  let realizedProceeds = 0;
   let lastUnitPrice = null;
   let lastTotalValue = null;
   let lastValuationDate = null;
@@ -264,7 +312,10 @@ function summarizeParty(party, transactions, spots) {
 
   for (const t of txs) {
     // Transactiekosten tellen mee in costBasis (echte netto-investering)
-    if (t.feeEur) { totalFees += +t.feeEur; costBasis += +t.feeEur; }
+    if (t.feeEur) {
+      totalFees += +t.feeEur;
+      if (t.type !== 'verkoop') costBasis += +t.feeEur;
+    }
 
     switch (t.type) {
       case 'inleg':
@@ -277,6 +328,21 @@ function summarizeParty(party, transactions, spots) {
           const amt = +t.amountEur || 0;
           if (quantity > 0) costBasis = Math.max(0, costBasis - (costBasis * (amt / quantity)));
           quantity = Math.max(0, quantity - amt);
+        } else {
+          const qty = +t.quantity || 0;
+          const totalQty = party.isMixed ? (goldQty + silverQty) : quantity;
+          const avgPx = totalQty > 0 ? costBasis / totalQty : 0;
+          const outQty = party.isMixed
+            ? ((t.metalType || 'goud') === 'goud' ? goldToGram(qty, t.goldUnit) : silverToOz(qty, t.silverUnit))
+            : qty;
+          costBasis = Math.max(0, costBasis - outQty * avgPx);
+          if (party.isMixed) {
+            const mt = t.metalType || 'goud';
+            if (mt === 'goud') goldQty = Math.max(0, goldQty - goldToGram(qty, t.goldUnit));
+            else silverQty = Math.max(0, silverQty - silverToOz(qty, t.silverUnit));
+          } else {
+            quantity = Math.max(0, quantity - qty);
+          }
         }
         break;
       case 'koop':
@@ -296,8 +362,18 @@ function summarizeParty(party, transactions, spots) {
       }
       case 'verkoop': {
         const qty = +t.quantity || 0;
-        const avgPx = (party.isMixed ? (goldQty + silverQty) : quantity) > 0 ? costBasis / ((party.isMixed ? (goldQty + silverQty) : quantity)) : 0;
-        costBasis = Math.max(0, costBasis - qty * avgPx);
+        const proceeds = (+t.amountEur || 0) || qty * (+t.unitPriceEur || 0);
+        const fee = +t.feeEur || 0;
+        const totalQty = party.isMixed ? (goldQty + silverQty) : quantity;
+        const avgPx = totalQty > 0 ? costBasis / totalQty : 0;
+        const saleQty = party.isMixed
+          ? ((t.metalType || 'goud') === 'goud' ? goldToGram(qty, t.goldUnit) : silverToOz(qty, t.silverUnit))
+          : qty;
+        const soldCost = saleQty * avgPx;
+        realizedCostBasis += soldCost;
+        realizedProceeds += proceeds;
+        realizedPnl += proceeds - soldCost - fee;
+        costBasis = Math.max(0, costBasis - soldCost);
         if (party.isMixed) {
           const mt = t.metalType || 'goud';
           if (mt === 'goud') goldQty = Math.max(0, goldQty - goldToGram(qty, t.goldUnit));
@@ -376,8 +452,9 @@ function summarizeParty(party, transactions, spots) {
   }
 
   const avgCost = (party.isMixed ? goldQty + silverQty : quantity) > 0 ? costBasis / (party.isMixed ? goldQty + silverQty : quantity) : null;
-  const pnl = currentValueEur - costBasis;
-  const pnlPct = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+  const invested = costBasis + realizedCostBasis;
+  const pnl = currentValueEur - costBasis + realizedPnl;
+  const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
 
   return {
     party, transactions: txs,
@@ -386,10 +463,11 @@ function summarizeParty(party, transactions, spots) {
     silverQty: party.isMixed ? silverQty : undefined,
     costBasis, avgCost,
     currentUnitPrice, currentValueEur,
-    invested: costBasis,
+    invested,
     lastValuationDate,
     totalDividend, totalFees, totalIncome,
     totalCashback, netCashIn,
+    realizedCostBasis, realizedProceeds, realizedPnl,
     pnl, pnlPct,
   };
 }
@@ -417,13 +495,37 @@ function buildPartyTimeSeries(transactions, parties, spots) {
       if (t.feeEur) s.cost += +t.feeEur; // fees tellen mee in investering
       switch (t.type) {
         case 'inleg':
-          if (p.unit === 'eur' || p.unit === 'bundle') { s.qty += +t.amountEur||0; s.cost += +t.amountEur||0; }
+          if (p.unit === 'eur' || p.unit === 'bundle') {
+            const amt = +t.amountEur || 0;
+            s.qty += amt; s.cost += amt;
+            if (s.lastTotal != null) s.lastTotal += amt;
+          }
           break;
         case 'opname':
           if (p.unit === 'eur' || p.unit === 'bundle') {
             const amt = +t.amountEur||0;
             if (s.qty > 0) s.cost = Math.max(0, s.cost - (s.cost * (amt / s.qty)));
             s.qty = Math.max(0, s.qty - amt);
+            if (s.lastTotal != null) s.lastTotal = Math.max(0, s.lastTotal - amt);
+          } else {
+            const qty = +t.quantity || 0;
+            const totQty = p.isMixed ? s.goldQty + s.silverQty : s.qty;
+            const avg = totQty > 0 ? s.cost / totQty : 0;
+            const outQty = p.isMixed
+              ? ((t.metalType || 'goud') === 'goud' ? goldToGram(qty, t.goldUnit) : silverToOz(qty, t.silverUnit))
+              : qty;
+            s.cost = Math.max(0, s.cost - outQty * avg);
+            if (s.lastTotal != null) {
+              const valAvg = s.lastUnitPx ?? (totQty > 0 ? s.lastTotal / totQty : avg);
+              s.lastTotal = Math.max(0, s.lastTotal - outQty * valAvg);
+            }
+            if (p.isMixed) {
+              const mt = t.metalType || 'goud';
+              if (mt === 'goud') s.goldQty = Math.max(0, s.goldQty - goldToGram(qty, t.goldUnit));
+              else s.silverQty = Math.max(0, s.silverQty - silverToOz(qty, t.silverUnit));
+            } else {
+              s.qty = Math.max(0, s.qty - qty);
+            }
           }
           break;
         case 'koop': case 'cashback':
@@ -435,6 +537,7 @@ function buildPartyTimeSeries(transactions, parties, spots) {
             s.qty += +t.quantity||0;
           }
           s.cost += (+t.quantity||0) * (+t.unitPriceEur||0);
+          if (s.lastTotal != null) s.lastTotal += (+t.quantity||0) * (+t.unitPriceEur||0);
           break;
         case 'dividend': {
           // Herbelegging: participaties worden gratis bijgeschreven, GEEN cost toevoeging
@@ -454,7 +557,9 @@ function buildPartyTimeSeries(transactions, parties, spots) {
           const qty = +t.quantity||0;
           const totQty = p.isMixed ? s.goldQty + s.silverQty : s.qty;
           const avg = totQty > 0 ? s.cost / totQty : 0;
+          const valAvg = s.lastUnitPx ?? (totQty > 0 && s.lastTotal != null ? s.lastTotal / totQty : avg);
           s.cost = Math.max(0, s.cost - qty * avg);
+          if (s.lastTotal != null) s.lastTotal = Math.max(0, s.lastTotal - qty * valAvg);
           if (p.isMixed) {
             const mt = t.metalType || 'goud';
             if (mt === 'goud') s.goldQty = Math.max(0, s.goldQty - goldToGram(qty, t.goldUnit));
@@ -482,22 +587,31 @@ function buildPartyTimeSeries(transactions, parties, spots) {
       const s = state[p.id];
       let v;
       if (p.isMixed) {
-        const goldPx = (spots.goldHistory?.length ? findNavForDate(spots.goldHistory, iso) : null) ?? (spots.goldSpotEurPerGram||0);
-        const silvPx = (spots.silverHistory?.length ? findNavForDate(spots.silverHistory, iso) : null) ?? (spots.silverSpotEurPerOunce||0);
-        v = s.goldQty * goldPx + s.silverQty * silvPx;
+        if (s.lastTotal != null) {
+          v = s.lastTotal;
+        } else {
+          const goldPx = s.lastUnitPx ?? (spots.goldHistory?.length ? findNavForDate(spots.goldHistory, iso) : null) ?? (spots.goldSpotEurPerGram||0);
+          const silvPx = (spots.silverHistory?.length ? findNavForDate(spots.silverHistory, iso) : null) ?? (spots.silverSpotEurPerOunce||0);
+          v = s.goldQty * goldPx + s.silverQty * silvPx;
+        }
       } else if (p.unit === 'crypto') {
-        const histKey = CRYPTO_HIST_KEY[p.spotKey];
-        const histPx = histKey && spots[histKey]?.length ? findNavForDate(spots[histKey], iso) : null;
-        v = s.qty * (histPx ?? spots[p.spotKey] ?? 0);
+        if (s.lastTotal != null) {
+          v = s.lastTotal;
+        } else {
+          const histKey = CRYPTO_HIST_KEY[p.spotKey];
+          const histPx = histKey && spots[histKey]?.length ? findNavForDate(spots[histKey], iso) : null;
+          v = s.qty * (s.lastUnitPx ?? histPx ?? spots[p.spotKey] ?? 0);
+        }
       } else if (p.unit === 'bundle') {
-        // Tijdelijk: toon ingelegd bedrag; winst wordt na de loop lineair verspreid
-        v = s.cost;
+        v = s.lastTotal ?? s.lastUnitPx ?? s.cost;
       } else if (p.unit === 'eur') {
         v = s.lastTotal ?? s.qty;
+      } else if (s.lastTotal != null) {
+        v = s.lastTotal;
       } else {
         let px = s.lastUnitPx;
         // Meesman: gebruik historische NAV indien beschikbaar
-        if (p.id === 'meesman' && spots.meesmanNavHistory?.length) {
+        if (px == null && p.id === 'meesman' && spots.meesmanNavHistory?.length) {
           const histNav = findNavForDate(spots.meesmanNavHistory, iso);
           if (histNav != null) px = histNav;
         }
@@ -512,23 +626,6 @@ function buildPartyTimeSeries(transactions, parties, spots) {
     }
     dates.push(iso); total.push(tot); invested.push(inv);
     cur.setDate(cur.getDate() + 1);
-  }
-  // Bundle-partijen: verspreid winst/verlies lineair over de gehele periode
-  for (const p of parties) {
-    if (p.unit !== 'bundle') continue;
-    const s = state[p.id];
-    if (s.lastTotal == null) continue; // nog geen herwaardering → toon alleen inleg
-    const vals = byParty[p.id];
-    const n = vals.length;
-    if (n < 2) continue;
-    const finalCost = vals[n - 1]; // cumulatief ingelegd op laatste dag
-    const gain = s.lastTotal - finalCost; // totale winst of verlies
-    if (gain === 0) continue;
-    for (let i = 0; i < n; i++) {
-      const delta = gain * (i / (n - 1));
-      vals[i]  += delta;
-      total[i] += delta; // pas portfolio-totaal ook aan
-    }
   }
 
   return { dates, byParty, total, invested };

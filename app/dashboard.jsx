@@ -26,7 +26,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     btcSpotEur:            tweaks.btcSpotEur,
     ethSpotEur:            tweaks.ethSpotEur,
     paxgSpotEur:           tweaks.paxgSpotEur,
-    // Meesman NAV zit nu in state (synct via Gist), tweaks als fallback
+    // Meesman NAV zit nu in state, tweaks als fallback
     meesmanNavEur:         state.meesmanNavEur     ?? tweaks.meesmanNavEur     ?? 100.4,
     meesmanNavHistory:     (state.meesmanNavHistory?.length ? state.meesmanNavHistory : null)
                            ?? tweaks.meesmanNavHistory ?? [],
@@ -66,7 +66,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
   const total        = summaries.reduce((s, x) => s + x.currentValueEur, 0);
   const totalInvested= summaries.reduce((s, x) => s + x.invested, 0);
-  const totalPnl     = total - totalInvested;
+  const totalPnl     = summaries.reduce((s, x) => s + x.pnl, 0);
   const totalPnlPct  = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
   const totalFees    = state.transactions.reduce((s, t) => s + (+t.feeEur || 0) + (t.type === 'kosten' ? (+t.amountEur || 0) : 0), 0);
 
@@ -82,11 +82,16 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
   const ytd = React.useMemo(() => calcYTDReturn(timeSeries), [timeSeries]);
 
-  const sparse = React.useMemo(() => {
-    if (timeSeries.length <= 180) return timeSeries;
-    const step = Math.ceil(timeSeries.length / 180);
-    return timeSeries.filter((_, i) => i % step === 0 || i === timeSeries.length - 1);
+  const chartTimeSeries = React.useMemo(() => {
+    const firstMeaningful = timeSeries.findIndex(p => p.total >= 250);
+    return firstMeaningful > 0 ? timeSeries.slice(firstMeaningful) : timeSeries;
   }, [timeSeries]);
+
+  const sparse = React.useMemo(() => {
+    if (chartTimeSeries.length <= 180) return chartTimeSeries;
+    const step = Math.ceil(chartTimeSeries.length / 180);
+    return chartTimeSeries.filter((_, i) => i % step === 0 || i === chartTimeSeries.length - 1);
+  }, [chartTimeSeries]);
 
   const detailParty   = detailPartyId ? allParties.find(p => p.id === detailPartyId) : null;
   const detailSummary = detailParty ? summaries.find(s => s.party.id === detailParty.id) : null;
@@ -507,6 +512,8 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
         </Card>
       )}
 
+      <CurrentPricesList spots={spots} spotStatus={spotStatus} isMobile={isMobile} />
+
       {/* Render widget rows */}
       {isMobile ? (
         /* Mobile: alle widgets in één kolom; party_grid vervangen door compacte rijen */
@@ -583,6 +590,52 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
         onSave={saveCustomParty} initial={editParty}
       />
     </div>
+  );
+}
+
+function CurrentPricesList({ spots, spotStatus, isMobile }) {
+  const prices = [
+    { label: 'Bitcoin',  value: spots.btcSpotEur,            suffix: '/BTC',  decimals: 0 },
+    { label: 'Ethereum', value: spots.ethSpotEur,            suffix: '/ETH',  decimals: 0 },
+    { label: 'Pax Gold', value: spots.paxgSpotEur,           suffix: '/PAXG', decimals: 0 },
+    { label: 'Goud',     value: spots.goldSpotEurPerGram,    suffix: '/g',    decimals: 2 },
+    { label: 'Zilver',   value: spots.silverSpotEurPerOunce, suffix: '/oz',   decimals: 2 },
+    { label: 'Meesman',  value: spots.meesmanNavEur,         suffix: '/part', decimals: 4 },
+  ];
+
+  return (
+    <Card style={{ padding: isMobile ? '12px' : '14px 18px', marginBottom: isMobile ? 14 : 20 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:12, marginBottom:10 }}>
+        <div style={{ fontSize:12, fontWeight:600, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.06em' }}>
+          Huidige koersen
+        </div>
+        <div style={{ fontSize:10, color: spotStatus?.error ? 'var(--negative)' : 'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>
+          {spotStatus?.fetchedAt ? new Date(spotStatus.fetchedAt).toLocaleTimeString('nl-NL', { hour:'2-digit', minute:'2-digit' }) : 'live'}
+        </div>
+      </div>
+      <div style={{
+        display:'grid',
+        gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(6, minmax(0, 1fr))',
+        gap: isMobile ? 8 : 10,
+      }}>
+        {prices.map(p => (
+          <div key={p.label} style={{
+            minWidth:0,
+            padding:'8px 9px',
+            background:'var(--surface-2)',
+            border:'1px solid var(--border)',
+            borderRadius:'var(--radius)',
+          }}>
+            <div style={{ fontSize:10, color:'var(--fg-dim)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }}>
+              {p.label}
+            </div>
+            <div style={{ fontFamily:'var(--ff-mono)', fontSize:isMobile ? 12 : 13, color:'var(--fg)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+              {p.value != null ? fmtEur(p.value, { decimals: p.decimals }) : '—'}<span style={{ color:'var(--fg-dim)', fontSize:10 }}> {p.suffix}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 

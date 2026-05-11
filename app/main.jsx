@@ -32,15 +32,6 @@ function appendToHistory(existing, date, price) {
   return arr.slice(-1095); // 3 jaar max
 }
 
-function currentWeekKey(date = new Date()) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const day = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-  return `${d.getUTCFullYear()}-${String(week).padStart(2, '0')}`;
-}
-
 // ── Supabase helpers ──────────────────────────────────────────
 const SUPABASE_DEFAULTS = {
   url:     'https://xlmbpohjlcwjubgiyjaw.supabase.co',
@@ -128,13 +119,33 @@ async function supabaseLoadAll(client) {
   // Alleen setState als er écht data is — anders lokale state bewaren
   if (!transactions && !Object.keys(priceState).length) return null; // signaal: gebruik localStorage
 
-  const { transactions: _, ...settingsClean } = settings;
+  const {
+    transactions: _,
+    meesmanNavHistory,
+    goldHistory,
+    silverHistory,
+    btcHistory,
+    ethHistory,
+    paxgHistory,
+    lastWeeklySpotSave,
+    ...settingsClean
+  } = settings;
   return { ...settingsClean, ...priceState, ...(transactions ? { transactions } : {}) };
 }
 
 // Sla instellingen op in portfolio-tabel (zonder transacties)
 async function supabaseSaveSettings(client, state) {
-  const { transactions: _, ...settings } = state;
+  const {
+    transactions: _,
+    meesmanNavHistory,
+    goldHistory,
+    silverHistory,
+    btcHistory,
+    ethHistory,
+    paxgHistory,
+    lastWeeklySpotSave,
+    ...settings
+  } = state;
   const { error } = await client
     .from('portfolio')
     .upsert({ id: 'main', data: settings, updated_at: new Date().toISOString() }, { onConflict: 'id' });
@@ -181,17 +192,6 @@ async function supabaseSaveDailyValues(client, timeSeries) {
   }
 }
 
-function historyToPriceRows(asset, history = []) {
-  return (history || [])
-    .filter(h => h?.date && +(h.nav ?? 0) > 0)
-    .map(h => ({
-      asset,
-      date: h.date,
-      nav: +(h.nav ?? 0),
-      updated_at: new Date().toISOString(),
-    }));
-}
-
 function priceRowsToState(rows = []) {
   const byAsset = rows.reduce((acc, r) => {
     if (!r.asset || !r.date || r.nav == null) return acc;
@@ -211,24 +211,6 @@ function priceRowsToState(rows = []) {
   if (byAsset.eth_eur?.length) state.ethHistory = byAsset.eth_eur;
   if (byAsset.paxg_eur?.length) state.paxgHistory = byAsset.paxg_eur;
   return state;
-}
-
-async function supabaseSyncPriceHistory(client, state) {
-  const rows = [
-    ...historyToPriceRows('meesman_aandelen_wereldwijd_totaal', normalizeMeesmanHistory(state.meesmanNavHistory).history),
-    ...historyToPriceRows('gold_eur_per_gram', state.goldHistory),
-    ...historyToPriceRows('silver_eur_per_ounce', state.silverHistory),
-    ...historyToPriceRows('btc_eur', state.btcHistory),
-    ...historyToPriceRows('eth_eur', state.ethHistory),
-    ...historyToPriceRows('paxg_eur', state.paxgHistory),
-  ];
-  if (!rows.length) return;
-  for (let i = 0; i < rows.length; i += 500) {
-    const { error } = await client
-      .from('asset_price_history')
-      .upsert(rows.slice(i, i + 500), { onConflict: 'asset,date' });
-    if (error) throw new Error(error.message);
-  }
 }
 
 // ── Spot price fetchers ───────────────────────────────────────
@@ -434,6 +416,7 @@ function mapT212Order(order) {
 function App() {
   const [state, setState]           = React.useState(() => loadState());
   const [tweaks, setTweaks]         = React.useState(() => ({ ...window.TWEAKS }));
+  const [liveSpot, setLiveSpot]     = React.useState({});
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
   const [activeTab, setActiveTab]   = React.useState('dashboard');
   const [spotStatus, setSpotStatus] = React.useState({ loading: false, error: null, fetchedAt: null });
@@ -521,7 +504,6 @@ function App() {
       Promise.all([
         supabaseSaveSettings(client, state),
         supabaseSyncTransactions(client, state.transactions),
-        supabaseSyncPriceHistory(client, state),
       ])
         .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
         .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
@@ -556,6 +538,8 @@ function App() {
     });
   }, []);
 
+  const displayTweaks = React.useMemo(() => ({ ...tweaks, ...liveSpot }), [tweaks, liveSpot]);
+
   const refreshSpot = React.useCallback(async () => {
     setSpotStatus(s => ({ ...s, loading: true, error: null }));
     const [metals, crypto] = await Promise.allSettled([
@@ -572,34 +556,17 @@ function App() {
       updates.ethSpotEur  = +crypto.value.ethSpotEur.toFixed(2);
       updates.paxgSpotEur = +crypto.value.paxgSpotEur.toFixed(2);
     }
-    if (Object.keys(updates).length) updateTweaks(tw => ({ ...tw, ...updates }));
-
-    // Live koersen worden elke 30 seconden toegepast; historie bewaren we alleen 1x per week.
-    const today = new Date().toISOString().slice(0, 10);
-    setState(s => {
-      const week = currentWeekKey();
-      if (s.lastWeeklySpotSave === week) return s;
-      const hist = {};
-      if (metals.status === 'fulfilled') {
-        hist.goldHistory   = appendToHistory(s.goldHistory,   today, updates.goldSpotEurPerGram);
-        hist.silverHistory = appendToHistory(s.silverHistory, today, updates.silverSpotEurPerOunce);
-      }
-      if (crypto.status === 'fulfilled') {
-        hist.btcHistory  = appendToHistory(s.btcHistory,  today, updates.btcSpotEur);
-        hist.ethHistory  = appendToHistory(s.ethHistory,  today, updates.ethSpotEur);
-        hist.paxgHistory = appendToHistory(s.paxgHistory, today, updates.paxgSpotEur);
-      }
-      return Object.keys(hist).length ? { ...s, ...hist, lastWeeklySpotSave: week } : s;
-    });
+    if (Object.keys(updates).length) setLiveSpot(prev => ({ ...prev, ...updates }));
 
     const errors = [
       metals.status === 'rejected' ? `Goud/zilver: ${metals.reason?.message}` : null,
       crypto.status === 'rejected' ? `Crypto: ${crypto.reason?.message}`       : null,
     ].filter(Boolean);
-    setSpotStatus({ loading: false, error: errors.length ? errors.join(' · ') : null, fetchedAt: new Date().toISOString() });
-  }, [updateTweaks]);
 
-  // Meesman NAV handmatig bijwerken (opgeslagen in state → Gist-sync)
+    setSpotStatus({ loading: false, error: errors.length ? errors.join(' · ') : null, fetchedAt: new Date().toISOString() });
+  }, []);
+
+  // Meesman NAV handmatig bijwerken
   const updateMeesmanNav = React.useCallback((nav) => {
     const today = new Date().toISOString().slice(0, 10);
     setState(s => ({
@@ -688,7 +655,6 @@ function App() {
       await Promise.all([
         supabaseSaveSettings(client, state),
         supabaseSyncTransactions(client, state.transactions),
-        supabaseSyncPriceHistory(client, state),
       ]);
       setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
     } catch (e) {
@@ -726,25 +692,25 @@ function App() {
     reader.readAsText(file);
   }, []);
 
-  // spots: huidige prijzen + historische reeksen (uit state, persistent via Gist)
+  // spots: live prijzen + historische reeksen uit state/Supabase
   const spots = React.useMemo(() => ({
-    goldSpotEurPerGram:    tweaks.goldSpotEurPerGram,
-    silverSpotEurPerOunce: tweaks.silverSpotEurPerOunce,
-    btcSpotEur:            tweaks.btcSpotEur,
-    ethSpotEur:            tweaks.ethSpotEur,
-    paxgSpotEur:           tweaks.paxgSpotEur,
-    // Meesman: uit state (Gist-synced), tweaks als fallback
-    meesmanNavEur:         state.meesmanNavEur     ?? tweaks.meesmanNavEur     ?? 100.4,
+    goldSpotEurPerGram:    displayTweaks.goldSpotEurPerGram,
+    silverSpotEurPerOunce: displayTweaks.silverSpotEurPerOunce,
+    btcSpotEur:            displayTweaks.btcSpotEur,
+    ethSpotEur:            displayTweaks.ethSpotEur,
+    paxgSpotEur:           displayTweaks.paxgSpotEur,
+    // Meesman: uit state, tweaks als fallback
+    meesmanNavEur:         state.meesmanNavEur     ?? displayTweaks.meesmanNavEur     ?? 100.4,
     meesmanNavHistory:     (state.meesmanNavHistory?.length ? state.meesmanNavHistory : null)
-                           ?? tweaks.meesmanNavHistory ?? [],
+                           ?? displayTweaks.meesmanNavHistory ?? [],
     goldHistory:           state.goldHistory   || [],
     silverHistory:         state.silverHistory || [],
     btcHistory:            state.btcHistory    || [],
     ethHistory:            state.ethHistory    || [],
     paxgHistory:           state.paxgHistory   || [],
-  }), [tweaks.goldSpotEurPerGram, tweaks.silverSpotEurPerOunce,
-       tweaks.btcSpotEur, tweaks.ethSpotEur, tweaks.paxgSpotEur,
-       tweaks.meesmanNavEur, tweaks.meesmanNavHistory,
+  }), [displayTweaks.goldSpotEurPerGram, displayTweaks.silverSpotEurPerOunce,
+       displayTweaks.btcSpotEur, displayTweaks.ethSpotEur, displayTweaks.paxgSpotEur,
+       displayTweaks.meesmanNavEur, displayTweaks.meesmanNavHistory,
        state.meesmanNavEur, state.meesmanNavHistory,
        state.goldHistory, state.silverHistory,
        state.btcHistory, state.ethHistory, state.paxgHistory]);
@@ -829,7 +795,7 @@ function App() {
         <>
           {mobileTab === 'home' && (
             <Dashboard state={state} setState={setState}
-              tweaks={tweaks} setTweaks={updateTweaks}
+              tweaks={displayTweaks} setTweaks={updateTweaks}
               spotStatus={spotStatus} onRefreshSpot={refreshSpot}
               addTrigger={mobileAddTrigger} isMobile={true}
               onUpdateMeesman={updateMeesmanNav} />
@@ -847,7 +813,7 @@ function App() {
         <>
           {activeTab === 'dashboard' && (
             <Dashboard state={state} setState={setState}
-              tweaks={tweaks} setTweaks={updateTweaks}
+              tweaks={displayTweaks} setTweaks={updateTweaks}
               spotStatus={spotStatus} onRefreshSpot={refreshSpot}
               onUpdateMeesman={updateMeesmanNav} />
           )}
@@ -872,7 +838,7 @@ function App() {
 
       {tweaksOpen && (
         <TweaksPanel
-          tweaks={tweaks} setTweaks={updateTweaks}
+          tweaks={displayTweaks} setTweaks={updateTweaks}
           onReset={resetData}
           onExport={exportData} onImport={importData} importMsg={importMsg}
           spotStatus={spotStatus} onRefreshSpot={refreshSpot}
