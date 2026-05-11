@@ -796,7 +796,7 @@ function DesktopSpotPanel({ tweaks, setTweaks, spots, state, onUpdateMeesman, on
       <div style={{ marginTop:10, fontSize:10, color:spotStatus?.error?'var(--negative)':'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>
         {spotStatus?.fetchedAt
           ? `Bijgewerkt ${new Date(spotStatus.fetchedAt).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}`
-          : spotStatus?.error ? spotStatus.error : 'Auto-ververs elke 10 min'}
+          : spotStatus?.error ? spotStatus.error : 'Auto-ververs elke 30 sec · opslag 1x per week'}
       </div>
     </Card>
   );

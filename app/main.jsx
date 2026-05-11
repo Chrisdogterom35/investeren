@@ -32,6 +32,15 @@ function appendToHistory(existing, date, price) {
   return arr.slice(-1095); // 3 jaar max
 }
 
+function currentWeekKey(date = new Date()) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-${String(week).padStart(2, '0')}`;
+}
+
 // ── Supabase helpers ──────────────────────────────────────────
 const SUPABASE_DEFAULTS = {
   url:     'https://xlmbpohjlcwjubgiyjaw.supabase.co',
@@ -565,9 +574,11 @@ function App() {
     }
     if (Object.keys(updates).length) updateTweaks(tw => ({ ...tw, ...updates }));
 
-    // Sla dagelijkse spot-prijzen op in state (persistent via localStorage + gist)
+    // Live koersen worden elke 30 seconden toegepast; historie bewaren we alleen 1x per week.
     const today = new Date().toISOString().slice(0, 10);
     setState(s => {
+      const week = currentWeekKey();
+      if (s.lastWeeklySpotSave === week) return s;
       const hist = {};
       if (metals.status === 'fulfilled') {
         hist.goldHistory   = appendToHistory(s.goldHistory,   today, updates.goldSpotEurPerGram);
@@ -578,7 +589,7 @@ function App() {
         hist.ethHistory  = appendToHistory(s.ethHistory,  today, updates.ethSpotEur);
         hist.paxgHistory = appendToHistory(s.paxgHistory, today, updates.paxgSpotEur);
       }
-      return Object.keys(hist).length ? { ...s, ...hist } : s;
+      return Object.keys(hist).length ? { ...s, ...hist, lastWeeklySpotSave: week } : s;
     });
 
     const errors = [
@@ -652,7 +663,7 @@ function App() {
 
   React.useEffect(() => {
     refreshSpot();
-    const t = setInterval(refreshSpot, 10 * 60 * 1000);
+    const t = setInterval(refreshSpot, 30 * 1000);
     return () => clearInterval(t);
   }, [refreshSpot]);
 
