@@ -697,7 +697,9 @@ function MobilePartyRows({ summaries, total }) {
                   color: isVal
                     ? (s.pnl||0)>=0 ? 'var(--positive)' : 'var(--negative)'
                     : 'var(--fg-dim)' }}>
-                  {isVal
+                  {s.party.unit === 'crypto' && s.quantity > 0
+                    ? formatHoldingQty(s)
+                    : isVal
                     ? `${(s.pnl||0)>=0?'+':'−'}${fmtEur(Math.abs(s.pnl||0))} · ${(s.pnlPct||0)>=0?'+':''}${(s.pnlPct||0).toFixed(1)}%`
                     : `${fmtEur(s.currentValueEur)} · ${share.toFixed(0)}%`}
                 </div>
@@ -910,6 +912,13 @@ function SpotEditor({ label, value, onChange, step }) {
   );
 }
 
+function formatHoldingQty(summary) {
+  const p = summary.party;
+  const unit = p.unitLabel || p.unit;
+  const decimals = p.unit === 'crypto' ? 8 : undefined;
+  return fmtQty(summary.quantity || 0, unit, { decimals });
+}
+
 function PartyCard({ summary, total, spots, onClick, onQuickAdd, metric = 'pnl_eur', onMetricChange, isCustom, onEditParty, onDeleteParty }) {
   const p = summary.party;
   const [metricOpen, setMetricOpen] = React.useState(false);
@@ -980,6 +989,12 @@ function PartyCard({ summary, total, spots, onClick, onQuickAdd, metric = 'pnl_e
       {p.unit==='part' && summary.quantity > 0 && (
         <div style={{ fontSize:11, color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', display:'flex', justifyContent:'space-between' }}>
           <span>{fmtQty(summary.quantity, p.unitLabel)}</span>
+          {summary.currentUnitPrice && <span>koers {fmtEur(summary.currentUnitPrice,{decimals:2})}</span>}
+        </div>
+      )}
+      {p.unit==='crypto' && summary.quantity > 0 && (
+        <div style={{ fontSize:11, color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', display:'flex', justifyContent:'space-between', gap:8 }}>
+          <span>bezit {formatHoldingQty(summary)}</span>
           {summary.currentUnitPrice && <span>koers {fmtEur(summary.currentUnitPrice,{decimals:2})}</span>}
         </div>
       )}

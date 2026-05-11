@@ -374,6 +374,16 @@ function PartyDetail({ open, onClose, party, summary, onAddTx, onDeleteTx, onEdi
         </div>
       )}
 
+      {/* Crypto holdings */}
+      {party.unit === 'crypto' && (
+        <div style={{ padding:'12px 22px', background:'var(--surface-2)', borderBottom:'1px solid var(--border)',
+          display:'flex', gap:24, fontSize:12, color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', flexWrap:'wrap' }}>
+          <span>Bezit: <span style={{ color:'var(--fg)' }}>{fmtQty(summary.quantity, party.unitLabel || party.unit, { decimals: 8 })}</span></span>
+          {summary.currentUnitPrice && <span>Koers: <span style={{ color:'var(--fg)' }}>{fmtEur(summary.currentUnitPrice, {decimals:2})}</span></span>}
+          {summary.avgCost && <span>Gem. aankoop: <span style={{ color:'var(--fg)' }}>{fmtEur(summary.avgCost, {decimals:2})}</span></span>}
+        </div>
+      )}
+
       {/* Goldrepublic mixed metals */}
       {party.isMixed && (
         <div style={{ padding:'12px 22px', background:'var(--surface-2)', borderBottom:'1px solid var(--border)',

@@ -67,6 +67,7 @@ function TransactionsTab({ state, setState, spots }) {
             <span style={{ color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', fontSize:11 }}>
               {s.party.unit === 'part' ? fmtQty(s.quantity, s.party.unitLabel) :
                s.party.isMixed ? `${fmtQty(s.goldQty||0,'g')} + ${fmtQty(s.silverQty||0,'oz')}` :
+               s.party.unit === 'crypto' ? fmtQty(s.quantity, s.party.unitLabel || s.party.unit, { decimals: 8 }) :
                fmtQty(s.quantity, s.party.unit)}
             </span>
             <span style={{ color:'var(--fg)', fontFamily:'var(--ff-mono)', fontWeight:500 }}>{fmtEur(s.currentValueEur)}</span>
