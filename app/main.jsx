@@ -20,9 +20,8 @@ const TABS = [
 ];
 
 const OZ_TO_GRAM     = 31.1034768;
-const T212_PROXY     = 'https://corsproxy.io/?url=';
-const GIST_API       = 'https://api.github.com/gists';
-const GIST_CFG_KEY   = 'investeringen-gist-v1';
+const T212_PROXY        = 'https://corsproxy.io/?url=';
+const SUPABASE_CFG_KEY  = 'investeringen-supabase-v1';
 
 // ── Price history helper ──────────────────────────────────────
 function appendToHistory(existing, date, price) {
@@ -33,49 +32,33 @@ function appendToHistory(existing, date, price) {
   return arr.slice(-1095); // 3 jaar max
 }
 
-// ── GitHub Gist helpers ───────────────────────────────────────
-function loadGistConfig() {
-  try { return JSON.parse(localStorage.getItem(GIST_CFG_KEY)) || { pat: '', gistId: '' }; }
-  catch { return { pat: '', gistId: '' }; }
+// ── Supabase helpers ──────────────────────────────────────────
+function loadSupabaseConfig() {
+  try { return JSON.parse(localStorage.getItem(SUPABASE_CFG_KEY)) || { url: '', anonKey: '' }; }
+  catch { return { url: '', anonKey: '' }; }
 }
 
-function gistHeaders(pat) {
-  return { Authorization: `Bearer ${pat.trim()}`, 'X-GitHub-Api-Version': '2022-11-28' };
+function getSupabaseClient(cfg) {
+  if (!cfg?.url || !cfg?.anonKey) return null;
+  try { return window.supabase?.createClient(cfg.url.trim(), cfg.anonKey.trim()); }
+  catch { return null; }
 }
 
-async function gistLoad(pat, gistId) {
-  const res = await fetch(`${GIST_API}/${gistId}`, { headers: gistHeaders(pat) });
-  if (res.status === 401) throw new Error('401 — Ongeldig token. Gebruik een classic PAT (ghp_…) met "gist" scope.');
-  if (!res.ok) throw new Error(`Laden mislukt (HTTP ${res.status})`);
-  const data = await res.json();
-  const content = data.files?.['portfolio.json']?.content;
-  if (!content) throw new Error('portfolio.json niet gevonden in gist');
-  return JSON.parse(content);
+async function supabaseLoad(client) {
+  const { data, error } = await client
+    .from('portfolio')
+    .select('data')
+    .eq('id', 'main')
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.data || null;
 }
 
-async function gistSave(pat, gistId, payload) {
-  const res = await fetch(`${GIST_API}/${gistId}`, {
-    method: 'PATCH',
-    headers: { ...gistHeaders(pat), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ files: { 'portfolio.json': { content: JSON.stringify(payload) } } }),
-  });
-  if (res.status === 401) throw new Error('401 — Ongeldig token. Gebruik een classic PAT (ghp_…) met "gist" scope.');
-  if (!res.ok) throw new Error(`Opslaan mislukt (HTTP ${res.status})`);
-}
-
-async function gistCreate(pat) {
-  const res = await fetch(GIST_API, {
-    method: 'POST',
-    headers: { ...gistHeaders(pat), 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      description: 'Investeringen Dashboard',
-      public: false,
-      files: { 'portfolio.json': { content: '{}' } },
-    }),
-  });
-  if (res.status === 401) throw new Error('401 — Ongeldig token. Gebruik een classic PAT (ghp_…) met "gist" scope.');
-  if (!res.ok) throw new Error(`Aanmaken mislukt (HTTP ${res.status})`);
-  return (await res.json()).id;
+async function supabaseSave(client, payload) {
+  const { error } = await client
+    .from('portfolio')
+    .upsert({ id: 'main', data: payload, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+  if (error) throw new Error(error.message);
 }
 
 // ── Spot price fetchers ───────────────────────────────────────
@@ -217,7 +200,7 @@ function App() {
   const [spotStatus, setSpotStatus] = React.useState({ loading: false, error: null, fetchedAt: null });
   const [t212Status, setT212Status] = React.useState({ loading: false, error: null, imported: 0, done: false });
   const [importMsg, setImportMsg]   = React.useState(null);
-  const [gistConfig, setGistConfig] = React.useState(loadGistConfig);
+  const [supabaseConfig, setSupabaseConfig] = React.useState(loadSupabaseConfig);
   const [syncStatus, setSyncStatus] = React.useState({ loading: false, error: null, syncedAt: null });
   const syncTimerRef = React.useRef(null);
   const [isMobile, setIsMobile] = React.useState(() => window.matchMedia('(max-width: 767px)').matches);
@@ -234,43 +217,27 @@ function App() {
   // Persist state to localStorage
   React.useEffect(() => { saveState(state); }, [state]);
 
-  // Persist gist config to localStorage (PAT nooit in HTML)
+  // Persist Supabase config to localStorage
   React.useEffect(() => {
-    try { localStorage.setItem(GIST_CFG_KEY, JSON.stringify(gistConfig)); } catch {}
-  }, [gistConfig]);
+    try { localStorage.setItem(SUPABASE_CFG_KEY, JSON.stringify(supabaseConfig)); } catch {}
+  }, [supabaseConfig]);
 
-  // Lees Gist config uit URL-hash bij opstarten
-  // #pat=xxx&gist=yyy → volledige beginscherm-link, URL bewaren zodat shortcut blijft werken
-  // #gist=yyy         → setup-link (alleen Gist ID), URL opschonen, instellingen openen voor PAT
+  // Laad data van Supabase bij opstarten
+  const didInitialLoad = React.useRef(false);
   React.useEffect(() => {
-    const hash = window.location.hash;
-    const patM  = hash.match(/[#&]pat=([^&#\s]+)/);
-    const gistM = hash.match(/[#&]gist=([a-zA-Z0-9]+)/);
-    if (patM && gistM) {
-      // Volledige beginscherm-URL: stil configureren, URL laten staan zodat shortcut altijd werkt
-      setGistConfig({ pat: decodeURIComponent(patM[1]), gistId: gistM[1] });
-    } else if (gistM) {
-      // Alleen Gist ID: opschonen + instellingen openen voor PAT-invoer
-      setGistConfig(c => ({ ...c, gistId: c.gistId || gistM[1] }));
-      history.replaceState(null, '', window.location.pathname + window.location.search);
-      setTweaksOpen(true);
-    }
-  }, []);
-
-  // Laad data van gist bij opstarten (of zodra config via URL-hash binnenkomt)
-  const didInitialGistLoad = React.useRef(false);
-  React.useEffect(() => {
-    if (!gistConfig.pat || !gistConfig.gistId) return;
-    if (didInitialGistLoad.current) return;
-    didInitialGistLoad.current = true;
+    if (!supabaseConfig.url || !supabaseConfig.anonKey) return;
+    if (didInitialLoad.current) return;
+    didInitialLoad.current = true;
+    const client = getSupabaseClient(supabaseConfig);
+    if (!client) return;
     setSyncStatus({ loading: true, error: null, syncedAt: null });
-    gistLoad(gistConfig.pat, gistConfig.gistId)
+    supabaseLoad(client)
       .then(data => {
         if (data?.transactions) setState(data);
         setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
       })
       .catch(e => setSyncStatus({ loading: false, error: e.message, syncedAt: null }));
-  }, [gistConfig.pat, gistConfig.gistId]); // herstart wanneer config verandert (bijv. via URL-hash)
+  }, [supabaseConfig.url, supabaseConfig.anonKey]);
 
   // Haal 1 jaar crypto-geschiedenis op als de history leeg is
   React.useEffect(() => {
@@ -280,12 +247,14 @@ function App() {
       .catch(() => {});
   }, []); // eenmalig bij mount
 
-  // Automatisch opslaan in gist 3 seconden na elke state-wijziging
+  // Automatisch opslaan in Supabase 3 seconden na elke state-wijziging
   React.useEffect(() => {
-    if (!gistConfig.pat || !gistConfig.gistId) return;
+    if (!supabaseConfig.url || !supabaseConfig.anonKey) return;
+    const client = getSupabaseClient(supabaseConfig);
+    if (!client) return;
     clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
-      gistSave(gistConfig.pat, gistConfig.gistId, state)
+      supabaseSave(client, state)
         .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
         .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
     }, 3000);
@@ -439,31 +408,17 @@ function App() {
     setT212Status({ loading: false, error: null, imported: 0, done: false });
   }, [state.transactions]);
 
-  // Maak nieuwe gist aan en sla huidige data op
-  const createGistAndSave = React.useCallback(async () => {
-    if (!gistConfig.pat) return;
-    setSyncStatus({ loading: true, error: null, syncedAt: null });
-    try {
-      const id = await gistCreate(gistConfig.pat);
-      const newCfg = { ...gistConfig, gistId: id };
-      setGistConfig(newCfg);
-      await gistSave(gistConfig.pat, id, state);
-      setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
-    } catch (e) {
-      setSyncStatus({ loading: false, error: e.message, syncedAt: null });
-    }
-  }, [gistConfig, state]);
-
   const syncNow = React.useCallback(async () => {
-    if (!gistConfig.pat || !gistConfig.gistId) return;
+    const client = getSupabaseClient(supabaseConfig);
+    if (!client) return;
     setSyncStatus({ loading: true, error: null, syncedAt: null });
     try {
-      await gistSave(gistConfig.pat, gistConfig.gistId, state);
+      await supabaseSave(client, state);
       setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
     } catch (e) {
       setSyncStatus({ loading: false, error: e.message, syncedAt: null });
     }
-  }, [gistConfig, state]);
+  }, [supabaseConfig, state]);
 
   const exportData = React.useCallback(() => {
     const json = JSON.stringify(state, null, 2);
@@ -527,7 +482,7 @@ function App() {
     [state.transactions, spots, allParties]
   );
 
-  const gistOk = !!(gistConfig.pat && gistConfig.gistId);
+  const sbOk = !!(supabaseConfig.url && supabaseConfig.anonKey);
 
   return (
     <>
@@ -574,8 +529,8 @@ function App() {
               {THEMES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
             </select>
             {/* Sync indicator */}
-            {gistOk && (
-              <span title={syncStatus.error ? syncStatus.error : syncStatus.syncedAt ? 'Gesynchroniseerd' : 'Sync actief'}
+            {sbOk && (
+              <span title={syncStatus.error ? syncStatus.error : syncStatus.syncedAt ? 'Supabase: gesynchroniseerd' : 'Supabase: sync actief'}
                 style={{ fontSize: 14, color: syncStatus.error ? 'var(--negative)' : syncStatus.loading ? 'var(--fg-dim)' : 'var(--positive)', lineHeight: 1 }}>
                 {syncStatus.loading ? '↻' : syncStatus.error ? '⚠' : '●'}
               </span>
@@ -645,8 +600,8 @@ function App() {
           onExport={exportData} onImport={importData} importMsg={importMsg}
           spotStatus={spotStatus} onRefreshSpot={refreshSpot}
           t212Status={t212Status} onImportT212={importT212} onDeleteT212={deleteT212Txs}
-          gistConfig={gistConfig} setGistConfig={setGistConfig}
-          syncStatus={syncStatus} onCreateGist={createGistAndSave} onSyncNow={syncNow}
+          supabaseConfig={supabaseConfig} setSupabaseConfig={setSupabaseConfig}
+          syncStatus={syncStatus} onSyncNow={syncNow}
           onClose={() => setTweaksOpen(false)}
           meesmanNav={state.meesmanNavEur} meesmanHistory={state.meesmanNavHistory}
           onUpdateMeesman={updateMeesmanNav}
@@ -700,7 +655,7 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
                        spotStatus, onRefreshSpot,
                        t212Status, onImportT212, onDeleteT212,
                        onExport, onImport, importMsg,
-                       gistConfig, setGistConfig, syncStatus, onCreateGist, onSyncNow,
+                       supabaseConfig, setSupabaseConfig, syncStatus, onSyncNow,
                        meesmanNav, meesmanHistory, onUpdateMeesman,
                        histStatus, onLoadHistory }) {
 
@@ -716,23 +671,7 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
   );
 
   const hasT212Auth = !!(tweaks.t212ApiKey || '').trim();
-  const gistReady   = !!(gistConfig?.pat && gistConfig?.gistId);
-  const [copyDone, setCopyDone]         = React.useState(false);
-  const [homeCopyDone, setHomeCopyDone] = React.useState(false);
-
-  const copyShareUrl = () => {
-    const url = `${location.origin}${location.pathname}#gist=${gistConfig.gistId}`;
-    navigator.clipboard.writeText(url)
-      .then(() => { setCopyDone(true); setTimeout(() => setCopyDone(false), 2500); })
-      .catch(() => { prompt('Kopieer deze link:', url); });
-  };
-
-  const copyHomeUrl = () => {
-    const url = `${location.origin}${location.pathname}#pat=${encodeURIComponent(gistConfig.pat)}&gist=${gistConfig.gistId}`;
-    navigator.clipboard.writeText(url)
-      .then(() => { setHomeCopyDone(true); setTimeout(() => setHomeCopyDone(false), 2500); })
-      .catch(() => { prompt('Kopieer beginscherm-link (alleen voor eigen apparaat):', url); });
-  };
+  const sbReady     = !!(supabaseConfig?.url && supabaseConfig?.anonKey);
 
   return (
     <div className="tweaks-panel" style={{ position:'fixed', bottom:20, right:20, width:320,
@@ -746,11 +685,11 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
 
       <div style={{ padding:'14px 16px', display:'grid', gap:16, maxHeight:'80vh', overflowY:'auto' }}>
 
-        {/* ── Cloud sync ── */}
+        {/* ── Supabase sync ── */}
         <div>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-            <SectionLabel>Cloud sync</SectionLabel>
-            {gistReady && (
+            <SectionLabel>☁ Supabase sync</SectionLabel>
+            {sbReady && (
               <button onClick={onSyncNow} disabled={syncStatus?.loading}
                 style={{ background:'transparent', border:'1px solid var(--border)', color:'var(--fg-muted)',
                   padding:'3px 8px', borderRadius:'var(--radius)', fontSize:10, cursor:'pointer', fontFamily:'inherit' }}>
@@ -761,30 +700,22 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
           <div style={{ display:'grid', gap:8 }}>
             <label style={{ fontSize:12 }}>
               <div style={{ color:'var(--fg-muted)', marginBottom:4 }}>
-                GitHub PAT <span style={{ color:'var(--fg-dim)' }}>(gist scope — opgeslagen lokaal)</span>
+                Project URL <span style={{ color:'var(--fg-dim)' }}>(https://xxxx.supabase.co)</span>
               </div>
-              <input type="password" value={gistConfig?.pat || ''}
-                onChange={e => setGistConfig(c => ({...c, pat: e.target.value}))}
-                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+              <input value={supabaseConfig?.url || ''}
+                onChange={e => setSupabaseConfig(c => ({...c, url: e.target.value}))}
+                placeholder="https://abcdefgh.supabase.co"
                 style={{ ...inputStyle, width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'var(--ff-mono)' }} />
             </label>
             <label style={{ fontSize:12 }}>
               <div style={{ color:'var(--fg-muted)', marginBottom:4 }}>
-                Gist ID <span style={{ color:'var(--fg-dim)' }}>(leeg = nieuw aanmaken)</span>
+                Anon key <span style={{ color:'var(--fg-dim)' }}>(opgeslagen lokaal)</span>
               </div>
-              <input value={gistConfig?.gistId || ''}
-                onChange={e => setGistConfig(c => ({...c, gistId: e.target.value}))}
-                placeholder="automatisch na aanmaken"
+              <input type="password" value={supabaseConfig?.anonKey || ''}
+                onChange={e => setSupabaseConfig(c => ({...c, anonKey: e.target.value}))}
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5c..."
                 style={{ ...inputStyle, width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'var(--ff-mono)' }} />
             </label>
-            {gistConfig?.pat && !gistConfig?.gistId && (
-              <button onClick={onCreateGist} disabled={syncStatus?.loading}
-                style={{ padding:'8px 12px', fontSize:12, background:'var(--surface-2)',
-                  border:'1px solid var(--border)', borderRadius:'var(--radius)',
-                  cursor:'pointer', color:'var(--fg)', fontFamily:'inherit' }}>
-                {syncStatus?.loading ? '…bezig' : '✦ Maak nieuwe gist aan'}
-              </button>
-            )}
             {syncStatus?.error && (
               <div style={{ fontSize:10, fontFamily:'var(--ff-mono)', color:'var(--negative)' }}>
                 ⚠ {syncStatus.error}
@@ -795,46 +726,13 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
                 ✓ Gesynchroniseerd {new Date(syncStatus.syncedAt).toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'})}
               </div>
             )}
-            {/* Links voor ander apparaat / beginscherm */}
-            {gistReady && (
-              <div style={{ display:'grid', gap:10, padding:'12px', background:'var(--surface-2)', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>
-                <div style={{ fontSize:11, fontWeight:600, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.05em' }}>
-                  Ander apparaat of beginscherm
-                </div>
-
-                {/* Beginscherm-link (met PAT) */}
-                <div>
-                  <div style={{ fontSize:12, color:'var(--fg)', fontWeight:500, marginBottom:3 }}>⌂ Beginscherm-link</div>
-                  <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.5, marginBottom:6 }}>
-                    Open deze link op je telefoon en kies <b>"Zet op beginscherm"</b>. De app is daarna direct gesynchroniseerd — geen PAT invoeren nodig.
-                  </div>
-                  <button onClick={copyHomeUrl}
-                    style={{ width:'100%', padding:'8px 12px', fontSize:12, borderRadius:'var(--radius)',
-                      cursor:'pointer', fontFamily:'inherit', fontWeight:600, border:'none',
-                      background: homeCopyDone ? 'var(--positive)' : 'var(--accent)', color:'#fff', transition:'background .2s' }}>
-                    {homeCopyDone ? '✓ Gekopieerd!' : '⌂ Kopieer beginscherm-link'}
-                  </button>
-                </div>
-
-                {/* Setup-link (alleen Gist ID) */}
-                <div style={{ borderTop:'1px solid var(--border)', paddingTop:10 }}>
-                  <div style={{ fontSize:12, color:'var(--fg)', fontWeight:500, marginBottom:3 }}>⎘ Setup-link (ander apparaat)</div>
-                  <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.5, marginBottom:6 }}>
-                    Gist ID wordt automatisch ingevuld. Je moet op het andere apparaat nog je PAT invoeren.
-                  </div>
-                  <button onClick={copyShareUrl}
-                    style={{ width:'100%', padding:'7px 12px', fontSize:12, borderRadius:'var(--radius)',
-                      cursor:'pointer', fontFamily:'inherit', border:'1px solid var(--border)',
-                      background: copyDone ? 'var(--positive)' : 'transparent',
-                      color: copyDone ? '#fff' : 'var(--fg)', transition:'background .2s, color .2s' }}>
-                    {copyDone ? '✓ Gekopieerd!' : '⎘ Kopieer setup-link'}
-                  </button>
-                </div>
-              </div>
-            )}
-            {!gistReady && (
-              <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.6 }}>
-                Maak een GitHub PAT aan via <b>github.com → Settings → Developer settings → Personal access tokens (classic)</b> met <b>gist</b> scope. Plak hem hierboven — hij wordt alleen lokaal opgeslagen. Daarna sync je automatisch op elk apparaat én je beginscherm.
+            {!sbReady && (
+              <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.6, padding:'8px', background:'var(--surface-2)', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>
+                <b>Setup:</b> Maak een gratis project aan op <b>supabase.com</b>. Voer dan dit SQL uit in de SQL Editor:<br/><br/>
+                <code style={{ fontFamily:'var(--ff-mono)', display:'block', whiteSpace:'pre-wrap', fontSize:10, color:'var(--fg-muted)' }}>
+                  {`create table portfolio (\n  id text primary key default 'main',\n  data jsonb default '{}',\n  updated_at timestamptz default now()\n);\nalter table portfolio enable row level security;\ncreate policy "allow all"\n  on portfolio for all\n  using (true) with check (true);`}
+                </code><br/>
+                Kopieer dan je <b>Project URL</b> en <b>anon public key</b> uit <b>Project Settings → API</b>.
               </div>
             )}
           </div>
