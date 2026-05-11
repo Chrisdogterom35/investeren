@@ -91,18 +91,21 @@ function rowToTx(r) {
 
 // Laad alles: instellingen uit portfolio-tabel, transacties uit transactions-tabel
 async function supabaseLoadAll(client) {
-  const [settingsRes, txRes] = await Promise.all([
+  const [settingsRes, txRes, priceRes] = await Promise.all([
     client.from('portfolio').select('data').eq('id', 'main').maybeSingle(),
     client.from('transactions').select('*').order('date', { ascending: true }),
+    client.from('asset_price_history').select('*').order('date', { ascending: true }),
   ]);
 
   // Als een tabel nog niet bestaat (user heeft SQL nog niet gedraaid), gooi geen fout
   const settingsErr = settingsRes.error;
   const txErr = txRes.error;
+  const priceErr = priceRes.error;
   if (settingsErr && txErr) throw new Error(settingsErr.message); // beide fout → echt probleem
 
   const settings = settingsRes.data?.data || {};
   let transactions = null;
+  const priceState = !priceErr ? priceRowsToState(priceRes.data || []) : {};
 
   if (!txErr && txRes.data?.length > 0) {
     // Genormaliseerde tabel heeft data → gebruik die
@@ -114,10 +117,10 @@ async function supabaseLoadAll(client) {
   }
 
   // Alleen setState als er écht data is — anders lokale state bewaren
-  if (!transactions) return null; // signaal: gebruik localStorage
+  if (!transactions && !Object.keys(priceState).length) return null; // signaal: gebruik localStorage
 
   const { transactions: _, ...settingsClean } = settings;
-  return { ...settingsClean, transactions };
+  return { ...settingsClean, ...priceState, ...(transactions ? { transactions } : {}) };
 }
 
 // Sla instellingen op in portfolio-tabel (zonder transacties)
@@ -169,6 +172,56 @@ async function supabaseSaveDailyValues(client, timeSeries) {
   }
 }
 
+function historyToPriceRows(asset, history = []) {
+  return (history || [])
+    .filter(h => h?.date && +(h.nav ?? 0) > 0)
+    .map(h => ({
+      asset,
+      date: h.date,
+      nav: +(h.nav ?? 0),
+      updated_at: new Date().toISOString(),
+    }));
+}
+
+function priceRowsToState(rows = []) {
+  const byAsset = rows.reduce((acc, r) => {
+    if (!r.asset || !r.date || r.nav == null) return acc;
+    if (!acc[r.asset]) acc[r.asset] = [];
+    acc[r.asset].push({ date: r.date, nav: +r.nav });
+    return acc;
+  }, {});
+  const state = {};
+  if (byAsset.meesman_aandelen_wereldwijd_totaal?.length) {
+    const normalized = normalizeMeesmanHistory(byAsset.meesman_aandelen_wereldwijd_totaal);
+    state.meesmanNavHistory = normalized.history;
+    state.meesmanNavEur = normalized.currentNav;
+  }
+  if (byAsset.gold_eur_per_gram?.length) state.goldHistory = byAsset.gold_eur_per_gram;
+  if (byAsset.silver_eur_per_ounce?.length) state.silverHistory = byAsset.silver_eur_per_ounce;
+  if (byAsset.btc_eur?.length) state.btcHistory = byAsset.btc_eur;
+  if (byAsset.eth_eur?.length) state.ethHistory = byAsset.eth_eur;
+  if (byAsset.paxg_eur?.length) state.paxgHistory = byAsset.paxg_eur;
+  return state;
+}
+
+async function supabaseSyncPriceHistory(client, state) {
+  const rows = [
+    ...historyToPriceRows('meesman_aandelen_wereldwijd_totaal', normalizeMeesmanHistory(state.meesmanNavHistory).history),
+    ...historyToPriceRows('gold_eur_per_gram', state.goldHistory),
+    ...historyToPriceRows('silver_eur_per_ounce', state.silverHistory),
+    ...historyToPriceRows('btc_eur', state.btcHistory),
+    ...historyToPriceRows('eth_eur', state.ethHistory),
+    ...historyToPriceRows('paxg_eur', state.paxgHistory),
+  ];
+  if (!rows.length) return;
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await client
+      .from('asset_price_history')
+      .upsert(rows.slice(i, i + 500), { onConflict: 'asset,date' });
+    if (error) throw new Error(error.message);
+  }
+}
+
 // ── Spot price fetchers ───────────────────────────────────────
 async function fetchSpotPrices() {
   const [goldRes, silverRes, fxRes] = await Promise.all([
@@ -214,6 +267,75 @@ async function fetchCryptoHistory() {
     ethHistory:  toDays(eth.prices  || []),
     paxgHistory: toDays(paxg.prices || []),
   };
+}
+
+async function fetchJsonWithFallback(url, wrappers) {
+  for (const wrap of wrappers) {
+    try {
+      const res = await fetch(wrap(url));
+      if (!res.ok) continue;
+      return await res.json();
+    } catch {}
+  }
+  throw new Error('Geen data ontvangen');
+}
+
+async function fetchMetalHistory() {
+  const end = Math.floor(Date.now() / 1000);
+  const start = end - 730 * 86400;
+  const wrappers = [
+    u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    u => `https://api.codetabs.com/v1/proxy/?quest=${u}`,
+    u => u,
+  ];
+  const yahoo = symbol =>
+    `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${start}&period2=${end}&interval=1d`;
+  const fxUrl = `https://api.frankfurter.dev/v1/${new Date(start * 1000).toISOString().slice(0,10)}..${new Date(end * 1000).toISOString().slice(0,10)}?base=USD&symbols=EUR`;
+  const [gold, silver, fx] = await Promise.all([
+    fetchJsonWithFallback(yahoo('GC=F'), wrappers),
+    fetchJsonWithFallback(yahoo('SI=F'), wrappers),
+    fetch(fxUrl).then(r => r.json()),
+  ]);
+  const fxRates = fx.rates || {};
+  const toHistory = (data, converter) => {
+    const result = data?.chart?.result?.[0];
+    const ts = result?.timestamp || [];
+    const closes = result?.indicators?.quote?.[0]?.close || [];
+    return ts
+      .map((t, i) => {
+        const date = new Date(t * 1000).toISOString().slice(0, 10);
+        const eur = fxRates[date]?.EUR;
+        const close = closes[i];
+        if (!eur || !close) return null;
+        return { date, nav: +converter(close, eur).toFixed(2) };
+      })
+      .filter(Boolean)
+      .filter((h, i, arr) => i === 0 || h.date !== arr[i - 1].date);
+  };
+  return {
+    goldHistory: toHistory(gold, (usdOz, eur) => (usdOz * eur) / OZ_TO_GRAM),
+    silverHistory: toHistory(silver, (usdOz, eur) => usdOz * eur),
+  };
+}
+
+async function fetchMeesmanLatestFromWebsite() {
+  const url = 'https://www.meesman.nl/onze-fondsen/aandelen-wereldwijd-totaal/';
+  const wrappers = [
+    u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    u => `https://api.codetabs.com/v1/proxy/?quest=${u}`,
+    u => u,
+  ];
+  for (const wrap of wrappers) {
+    try {
+      const html = await fetch(wrap(url)).then(r => r.text());
+      const m = html.match(/Laatste koers[\s\S]{0,160}?€\s*([0-9.,]+)[\s\S]{0,80}?\((\d{2}-\d{2}-\d{4})\)/i);
+      if (!m) continue;
+      const nav = +m[1].replace(/\./g, '').replace(',', '.');
+      const [dd, mm, yyyy] = m[2].split('-');
+      return { meesmanNavEur: nav, meesmanNavHistory: [{ date: `${yyyy}-${mm}-${dd}`, nav }] };
+    } catch {}
+  }
+  throw new Error('Meesman website niet bereikbaar');
 }
 
 // Haal 2 jaar Meesman NAV-geschiedenis op via Yahoo Finance (0P0001IJJX.F)
@@ -341,7 +463,21 @@ function App() {
     setSyncStatus({ loading: true, error: null, syncedAt: null });
     supabaseLoadAll(client)
       .then(data => {
-        if (data?.transactions?.length > 0) setState(data); // nooit lokale state wissen met lege Supabase
+        if (data) setState(s => {
+          const meesman = normalizeMeesmanHistory(mergePriceHistory(s.meesmanNavHistory, data.meesmanNavHistory));
+          return {
+            ...s,
+            ...data,
+            transactions: data.transactions?.length ? data.transactions : s.transactions,
+            meesmanNavEur: meesman.currentNav,
+            meesmanNavHistory: meesman.history,
+            goldHistory:       mergePriceHistory(s.goldHistory,       data.goldHistory),
+            silverHistory:     mergePriceHistory(s.silverHistory,     data.silverHistory),
+            btcHistory:        mergePriceHistory(s.btcHistory,        data.btcHistory),
+            ethHistory:        mergePriceHistory(s.ethHistory,        data.ethHistory),
+            paxgHistory:       mergePriceHistory(s.paxgHistory,       data.paxgHistory),
+          };
+        }); // nooit lokale transacties wissen met lege Supabase
         setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
       })
       .catch(e => setSyncStatus({ loading: false, error: e.message, syncedAt: null }));
@@ -355,6 +491,18 @@ function App() {
       .catch(() => {});
   }, []); // eenmalig bij mount
 
+  // Haal 2 jaar goud/zilver historie op voor de waarde-over-tijd grafiek
+  React.useEffect(() => {
+    if ((state.goldHistory || []).length > 20 && (state.silverHistory || []).length > 20) return;
+    fetchMetalHistory()
+      .then(h => setState(s => ({
+        ...s,
+        goldHistory: mergePriceHistory(s.goldHistory, h.goldHistory),
+        silverHistory: mergePriceHistory(s.silverHistory, h.silverHistory),
+      })))
+      .catch(() => {});
+  }, []); // eenmalig bij mount
+
   // Automatisch opslaan: instellingen + transacties syncen naar Supabase
   React.useEffect(() => {
     const client = getSupabaseClient(supabaseConfig);
@@ -364,6 +512,7 @@ function App() {
       Promise.all([
         supabaseSaveSettings(client, state),
         supabaseSyncTransactions(client, state.transactions),
+        supabaseSyncPriceHistory(client, state),
       ])
         .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
         .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
@@ -455,14 +604,16 @@ function App() {
     setMeesmanHistStatus({ loading: true, error: null, done: false });
     try {
       const result = await fetchMeesmanHistory();
+      const latest = await fetchMeesmanLatestFromWebsite().catch(() => null);
       setState(s => {
         // Samenvoegen: bestaande handmatige entries bewaren, Yahoo-data als basis
-        const merged = [...result.meesmanNavHistory];
-        (s.meesmanNavHistory || []).forEach(h => {
-          if (!merged.find(m => m.date === h.date)) merged.push(h);
-        });
-        merged.sort((a, b) => a.date.localeCompare(b.date));
-        return { ...s, meesmanNavEur: result.meesmanNavEur, meesmanNavHistory: merged };
+        const officialLatest = latest?.meesmanNavHistory?.[0] || MEESMAN_NAV_SEED_HISTORY[MEESMAN_NAV_SEED_HISTORY.length - 1];
+        const merged = mergePriceHistory(
+          result.meesmanNavHistory.filter(h => h.date <= officialLatest.date),
+          [...(s.meesmanNavHistory || []), ...(latest?.meesmanNavHistory || [])]
+        );
+        const normalized = normalizeMeesmanHistory(merged);
+        return { ...s, meesmanNavEur: officialLatest.nav || normalized.currentNav, meesmanNavHistory: normalized.history };
       });
       setMeesmanHistStatus({ loading: false, error: null, done: true });
     } catch (e) {
@@ -526,6 +677,7 @@ function App() {
       await Promise.all([
         supabaseSaveSettings(client, state),
         supabaseSyncTransactions(client, state.transactions),
+        supabaseSyncPriceHistory(client, state),
       ]);
       setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
     } catch (e) {
@@ -685,7 +837,8 @@ function App() {
           {activeTab === 'dashboard' && (
             <Dashboard state={state} setState={setState}
               tweaks={tweaks} setTweaks={updateTweaks}
-              spotStatus={spotStatus} onRefreshSpot={refreshSpot} />
+              spotStatus={spotStatus} onRefreshSpot={refreshSpot}
+              onUpdateMeesman={updateMeesmanNav} />
           )}
           {activeTab === 'transacties' && (
             <TransactionsTab state={state} setState={setState} spots={spots} />
@@ -841,9 +994,9 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
             )}
             {!sbReady && (
               <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.6, padding:'8px', background:'var(--surface-2)', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>
-                <b>Setup:</b> Maak een gratis project aan op <b>supabase.com</b>. Voer dan dit SQL uit in de SQL Editor:<br/><br/>
+                <b>Setup:</b> Maak een gratis project aan op <b>supabase.com</b>. Voer <b>supabase-schema.sql</b> uit in de SQL Editor. Minimale basis:<br/><br/>
                 <code style={{ fontFamily:'var(--ff-mono)', display:'block', whiteSpace:'pre-wrap', fontSize:10, color:'var(--fg-muted)' }}>
-                  {`create table portfolio (\n  id text primary key default 'main',\n  data jsonb default '{}',\n  updated_at timestamptz default now()\n);\nalter table portfolio enable row level security;\ncreate policy "allow all"\n  on portfolio for all\n  using (true) with check (true);`}
+                  {`create table asset_price_history (\n  asset text not null,\n  date date not null,\n  nav numeric not null,\n  updated_at timestamptz default now(),\n  primary key (asset, date)\n);`}
                 </code><br/>
                 Kopieer dan je <b>Project URL</b> en <b>anon public key</b> uit <b>Project Settings → API</b>.
               </div>

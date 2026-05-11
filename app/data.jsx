@@ -2,6 +2,7 @@
 
 const STORAGE_KEY = 'investeringen-v3'; // v3 = eigen data, geen demo
 const OZ_TO_GRAM  = 31.1034768; // troy ounce → gram
+const DEFAULT_MEESMAN_NAV_EUR = 102.7860; // Meesman site: 08-05-2026
 
 // Zilver: converteer gram naar ounce voor interne opslag (spot is altijd €/oz)
 function silverToOz(qty, silverUnit) {
@@ -130,6 +131,39 @@ const GR_SEED_TX = [
   { party:'goldrepublic', type:'koop',    date:'2026-04-26', quantity:46.101, unitPriceEur:2.1388, feeEur:1.40, metalType:'zilver', silverUnit:'gram', note:'Market order apr 2026' },
 ];
 
+const MEESMAN_NAV_SEED_HISTORY = [
+  ...SEED_TX.map(t => ({ date: t.date, nav: +(+t.unitPriceEur).toFixed(4) })),
+  { date: '2026-04-10', nav: 96.0370 },
+  { date: '2026-04-24', nav: 100.0430 },
+  { date: '2026-05-05', nav: 101.1950 },
+  { date: '2026-05-08', nav: DEFAULT_MEESMAN_NAV_EUR },
+].reduce((acc, h) => {
+  const i = acc.findIndex(x => x.date === h.date);
+  if (i >= 0) acc[i] = h;
+  else acc.push(h);
+  acc.sort((a, b) => a.date.localeCompare(b.date));
+  return acc;
+}, []);
+
+function mergePriceHistory(base = [], extra = []) {
+  const map = new Map();
+  [...base, ...extra].forEach(h => {
+    const nav = +(h.nav ?? h.price ?? 0);
+    if (h.date && nav > 0) map.set(h.date, { date: h.date, nav });
+  });
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function normalizeMeesmanHistory(history = []) {
+  const officialLatest = MEESMAN_NAV_SEED_HISTORY[MEESMAN_NAV_SEED_HISTORY.length - 1];
+  const normalized = mergePriceHistory(
+    MEESMAN_NAV_SEED_HISTORY,
+    (history || []).filter(h => h.date <= officialLatest.date || +h.nav !== 100.4)
+  );
+  const current = normalized.find(h => h.date === officialLatest.date) || officialLatest;
+  return { history: normalized, currentNav: current.nav };
+}
+
 function makeId() { return 'tx_' + Math.random().toString(36).slice(2, 10); }
 
 function loadState() {
@@ -154,12 +188,14 @@ function loadState() {
       if (!parsed.meesmanNavHistory || !parsed.meesmanNavHistory.length) {
         const twHist = window.TWEAKS && window.TWEAKS.meesmanNavHistory;
         parsed.meesmanNavHistory = (twHist && twHist.length) ? twHist
-          : [{ date: new Date().toISOString().slice(0, 10), nav: parsed.meesmanNavEur }];
+          : MEESMAN_NAV_SEED_HISTORY;
       }
+      const normalizedMeesman = normalizeMeesmanHistory(parsed.meesmanNavHistory);
+      parsed.meesmanNavHistory = normalizedMeesman.history;
+      parsed.meesmanNavEur = normalizedMeesman.currentNav;
       return parsed;
     }
   } catch (e) {}
-  const today0 = new Date().toISOString().slice(0, 10);
   return {
     transactions: [
       ...SEED_TX.map((t, i) => ({ id: makeId() + i, ...t })),
@@ -169,8 +205,8 @@ function loadState() {
     customParties:      [],
     hiddenParties:      [],
     tileMetrics:        {},
-    meesmanNavEur:      100.4,
-    meesmanNavHistory:  [{ date: today0, nav: 100.4 }],
+    meesmanNavEur:      DEFAULT_MEESMAN_NAV_EUR,
+    meesmanNavHistory:  MEESMAN_NAV_SEED_HISTORY,
   };
 }
 
@@ -573,6 +609,7 @@ function fmtMonth(ym) {
 
 Object.assign(window, {
   PARTIES, TX_TYPES, TX_LABELS, SEED_TX, GR_SEED_TX,
+  DEFAULT_MEESMAN_NAV_EUR, MEESMAN_NAV_SEED_HISTORY, mergePriceHistory, normalizeMeesmanHistory,
   WIDGET_REGISTRY, DEFAULT_WIDGETS,
   OZ_TO_GRAM, silverToOz, goldToGram,
   loadState, saveState, makeId,

@@ -507,31 +507,6 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
         </Card>
       )}
 
-      {/* Spot rates bar — desktop only */}
-      {!isMobile && <div style={{ marginBottom:20, padding:'12px 20px', border:'1px solid var(--border)', borderRadius:'var(--radius)',
-        display:'flex', gap:16, alignItems:'center', fontSize:12, color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', flexWrap:'wrap' }}>
-        <span style={{ color:'var(--fg-dim)', textTransform:'uppercase', letterSpacing:'0.06em', fontSize:10 }}>
-          Spot ·{' '}
-          {spotStatus?.error ? <span style={{ color:'var(--negative)' }}>offline</span>
-            : spotStatus?.fetchedAt ? <span style={{ color:'var(--positive)' }}>live</span>
-            : spotStatus?.loading ? 'ophalen…' : 'handmatig'}
-        </span>
-        <SpotEditor label="Goud (€/g)" value={tweaks.goldSpotEurPerGram} onChange={v => setTweaks(t => ({...t,goldSpotEurPerGram:v}))} step="0.01" />
-        <SpotEditor label="Zilver (€/oz)" value={tweaks.silverSpotEurPerOunce} onChange={v => setTweaks(t => ({...t,silverSpotEurPerOunce:v}))} step="0.01" />
-        <button onClick={onRefreshSpot} disabled={spotStatus?.loading}
-          style={{ background:'transparent', border:'1px solid var(--border)', color:'var(--fg)',
-            padding:'5px 12px', borderRadius:'var(--radius)', fontSize:11, cursor:'pointer',
-            fontFamily:'inherit', opacity:spotStatus?.loading?0.5:1 }}>
-          {spotStatus?.loading ? 'Ophalen…' : '↻ Ververs'}
-        </button>
-        <span className="spot-bar-source" style={{ marginLeft:'auto', color:'var(--fg-dim)' }}>
-          {spotStatus?.fetchedAt
-            ? `Bijgewerkt ${new Date(spotStatus.fetchedAt).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})} · gold-api.com`
-            : spotStatus?.error ? `⚠ ${spotStatus.error}`
-            : 'Auto-ververs elke 10 min'}
-        </span>
-      </div>}
-
       {/* Render widget rows */}
       {isMobile ? (
         /* Mobile: alle widgets in één kolom; party_grid vervangen door compacte rijen */
@@ -562,13 +537,22 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
           />
         </div>
       ) : (
-        groupedWidgets.map((row, ri) => (
-          <div key={ri} className="widget-row" style={{ display:'grid', gridTemplateColumns:rowTemplate(row), gap:20, marginBottom:20 }}>
-            {row.map(wCfg => (
-              <div key={wCfg.id}>{renderWidget(wCfg)}</div>
-            ))}
-          </div>
-        ))
+        <>
+          {groupedWidgets.map((row, ri) => (
+            <div key={ri} className="widget-row" style={{ display:'grid', gridTemplateColumns:rowTemplate(row), gap:20, marginBottom:20 }}>
+              {row.map(wCfg => (
+                <div key={wCfg.id}>{renderWidget(wCfg)}</div>
+              ))}
+            </div>
+          ))}
+          <DesktopSpotPanel
+            tweaks={tweaks} setTweaks={setTweaks}
+            spots={spots} state={state}
+            onUpdateMeesman={onUpdateMeesman}
+            onRefreshSpot={onRefreshSpot}
+            spotStatus={spotStatus}
+          />
+        </>
       )}
 
       {/* Empty state */}
@@ -754,6 +738,81 @@ function MobileSpotBar({ tweaks, setTweaks, spots, state, onUpdateMeesman, onRef
         </div>
       )}
     </Card>
+  );
+}
+
+function DesktopSpotPanel({ tweaks, setTweaks, spots, state, onUpdateMeesman, onRefreshSpot, spotStatus }) {
+  const [meesmanInput, setMeesmanInput] = React.useState('');
+  const lastNav = spots.meesmanNavEur ?? state.meesmanNavEur ?? DEFAULT_MEESMAN_NAV_EUR;
+  const lastDate = (state.meesmanNavHistory || []).slice(-1)[0]?.date || '—';
+  const saveMeesman = () => {
+    const v = parseFloat((meesmanInput || '').replace(',', '.'));
+    if (v > 0) { onUpdateMeesman(v); setMeesmanInput(''); }
+  };
+  return (
+    <Card style={{ padding:'16px 20px', marginTop:4 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, flexWrap:'wrap', marginBottom:12 }}>
+        <SectionTitle title="Koersen" subtitle="Goud, zilver en Meesman onderaan het dashboard" />
+        <button onClick={onRefreshSpot} disabled={spotStatus?.loading}
+          style={{ background:'transparent', border:'1px solid var(--border)', color:'var(--fg)',
+            padding:'6px 12px', borderRadius:'var(--radius)', fontSize:12, cursor:'pointer',
+            fontFamily:'inherit', opacity:spotStatus?.loading?0.5:1 }}>
+          {spotStatus?.loading ? 'Ophalen...' : 'Ververs live'}
+        </button>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(180px, 1fr))', gap:14 }}>
+        <SpotPriceField
+          label="Goud" sub={`€/gram · ${state.goldHistory?.length || 0} historische punten`}
+          value={tweaks.goldSpotEurPerGram}
+          onChange={v => setTweaks(t => ({...t, goldSpotEurPerGram:v}))}
+        />
+        <SpotPriceField
+          label="Zilver" sub={`€/oz · ${state.silverHistory?.length || 0} historische punten`}
+          value={tweaks.silverSpotEurPerOunce}
+          onChange={v => setTweaks(t => ({...t, silverSpotEurPerOunce:v}))}
+        />
+        <div>
+          <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'0.06em', color:'var(--fg-muted)', marginBottom:6, fontFamily:'var(--ff-mono)' }}>
+            Meesman
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <input type="number" step="0.01" value={meesmanInput}
+              onChange={e => setMeesmanInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveMeesman()}
+              placeholder={lastNav.toFixed(4)}
+              style={{ ...inputStyle, padding:'7px 9px', fontFamily:'var(--ff-mono)' }} />
+            <button onClick={saveMeesman} disabled={!meesmanInput}
+              style={{ padding:'7px 11px', borderRadius:'var(--radius)', border:'1px solid var(--border)',
+                background: meesmanInput ? 'var(--accent)' : 'var(--surface-2)',
+                color: meesmanInput ? '#fff' : 'var(--fg-dim)', cursor:meesmanInput?'pointer':'default', fontFamily:'inherit' }}>
+              Opslaan
+            </button>
+          </div>
+          <div style={{ marginTop:5, fontSize:11, color:'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>
+            nu €{lastNav.toFixed(4)} · {lastDate} · {(state.meesmanNavHistory || []).length} punten
+          </div>
+        </div>
+      </div>
+      <div style={{ marginTop:10, fontSize:10, color:spotStatus?.error?'var(--negative)':'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>
+        {spotStatus?.fetchedAt
+          ? `Bijgewerkt ${new Date(spotStatus.fetchedAt).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}`
+          : spotStatus?.error ? spotStatus.error : 'Auto-ververs elke 10 min'}
+      </div>
+    </Card>
+  );
+}
+
+function SpotPriceField({ label, sub, value, onChange }) {
+  return (
+    <label>
+      <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'0.06em', color:'var(--fg-muted)', marginBottom:6, fontFamily:'var(--ff-mono)' }}>
+        {label}
+      </div>
+      <input type="number" step="0.01" value={value || ''}
+        onChange={e => onChange(+e.target.value)}
+        style={{ ...inputStyle, padding:'7px 9px', fontFamily:'var(--ff-mono)' }} />
+      <div style={{ marginTop:5, fontSize:11, color:'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>{sub}</div>
+    </label>
   );
 }
 

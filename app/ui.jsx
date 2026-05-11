@@ -39,17 +39,18 @@ function Card({ children, style, onClick, hover, ...rest }) {
   const [h, setH] = useState(false);
   return (
     <div
+      className="dash-card"
       onClick={onClick}
       onMouseEnter={() => hover && setH(true)}
       onMouseLeave={() => hover && setH(false)}
       style={{
         background: 'var(--surface)',
-        border: '1px solid var(--border)',
+        border: '1px solid var(--border-strong)',
         borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--shadow)',
         transition: 'transform .15s ease, border-color .15s ease',
         transform: h ? 'translateY(-1px)' : 'none',
-        borderColor: h ? 'var(--border-strong)' : 'var(--border)',
+        borderColor: h ? 'var(--accent)' : 'var(--border-strong)',
         cursor: onClick ? 'pointer' : 'default',
         ...style,
       }}
