@@ -89,6 +89,31 @@ function rowToTx(r) {
   return t;
 }
 
+function txMergeKey(t) {
+  if (t?.id) return t.id;
+  return [
+    t?.party || '',
+    t?.type || '',
+    t?.date || '',
+    t?.quantity ?? '',
+    t?.unitPriceEur ?? '',
+    t?.amountEur ?? '',
+    t?.note || '',
+  ].join('|');
+}
+
+function mergeTransactions(localTxs = [], remoteTxs = []) {
+  const merged = new Map();
+  [...localTxs, ...remoteTxs].forEach(tx => {
+    if (!tx) return;
+    merged.set(txMergeKey(tx), tx);
+  });
+  return [...merged.values()].sort((a, b) =>
+    (a.date || '').localeCompare(b.date || '') ||
+    (a.id || '').localeCompare(b.id || '')
+  );
+}
+
 // Laad alles: instellingen uit portfolio-tabel, transacties uit transactions-tabel
 async function supabaseLoadAll(client) {
   const [settingsRes, txRes, priceRes] = await Promise.all([
@@ -460,7 +485,7 @@ function App() {
           return {
             ...s,
             ...data,
-            transactions: data.transactions?.length ? data.transactions : s.transactions,
+            transactions: data.transactions?.length ? mergeTransactions(s.transactions, data.transactions) : s.transactions,
             meesmanNavEur: meesman.currentNav,
             meesmanNavHistory: meesman.history,
             goldHistory:       mergePriceHistory(s.goldHistory,       data.goldHistory),
@@ -749,6 +774,19 @@ function App() {
             ))}
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {isMobile && (
+              <button onClick={refreshSpot} disabled={spotStatus?.loading} title="Live koersen verversen"
+                style={{
+                  padding: '5px 10px', fontFamily: 'inherit', fontSize: 13,
+                  background: 'transparent',
+                  color: spotStatus?.loading ? 'var(--fg-dim)' : 'var(--fg-muted)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius)', cursor: spotStatus?.loading ? 'default' : 'pointer',
+                  lineHeight: 1, transition: 'all .15s',
+                }}>
+                {spotStatus?.loading ? '…' : '↻'}
+              </button>
+            )}
             <span className="nav-theme-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', marginRight: 4 }}>Thema</span>
             <div className="nav-themes-row" style={{ display: 'contents' }}>
               {THEMES.map(t => (

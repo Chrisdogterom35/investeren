@@ -83,8 +83,9 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
   const ytd = React.useMemo(() => calcYTDReturn(timeSeries), [timeSeries]);
 
   const chartTimeSeries = React.useMemo(() => {
-    const firstMeaningful = timeSeries.findIndex(p => p.total >= 250);
-    return firstMeaningful > 0 ? timeSeries.slice(firstMeaningful) : timeSeries;
+    const startDate = '2025-01-01';
+    const firstPoint = timeSeries.findIndex(p => p.date >= startDate);
+    return firstPoint > 0 ? timeSeries.slice(firstPoint) : timeSeries;
   }, [timeSeries]);
 
   const sparse = React.useMemo(() => {
