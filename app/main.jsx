@@ -95,22 +95,26 @@ async function supabaseLoadAll(client) {
     client.from('portfolio').select('data').eq('id', 'main').maybeSingle(),
     client.from('transactions').select('*').order('date', { ascending: true }),
   ]);
-  if (settingsRes.error) throw new Error(settingsRes.error.message);
-  if (txRes.error) throw new Error(txRes.error.message);
+
+  // Als een tabel nog niet bestaat (user heeft SQL nog niet gedraaid), gooi geen fout
+  const settingsErr = settingsRes.error;
+  const txErr = txRes.error;
+  if (settingsErr && txErr) throw new Error(settingsErr.message); // beide fout → echt probleem
 
   const settings = settingsRes.data?.data || {};
-  let transactions;
+  let transactions = null;
 
-  if (txRes.data?.length > 0) {
+  if (!txErr && txRes.data?.length > 0) {
     // Genormaliseerde tabel heeft data → gebruik die
     transactions = txRes.data.map(rowToTx);
-  } else if (settings.transactions?.length > 0) {
+  } else if (!txErr && settings.transactions?.length > 0) {
     // Migratie: zet oude JSON-blob-transacties over naar genormaliseerde tabel
     transactions = settings.transactions;
     supabaseSyncTransactions(client, transactions).catch(() => {}); // achtergrond-migratie
-  } else {
-    transactions = [];
   }
+
+  // Alleen setState als er écht data is — anders lokale state bewaren
+  if (!transactions) return null; // signaal: gebruik localStorage
 
   const { transactions: _, ...settingsClean } = settings;
   return { ...settingsClean, transactions };
@@ -337,7 +341,7 @@ function App() {
     setSyncStatus({ loading: true, error: null, syncedAt: null });
     supabaseLoadAll(client)
       .then(data => {
-        if (data?.transactions) setState(data);
+        if (data?.transactions?.length > 0) setState(data); // nooit lokale state wissen met lege Supabase
         setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
       })
       .catch(e => setSyncStatus({ loading: false, error: e.message, syncedAt: null }));
@@ -590,22 +594,6 @@ function App() {
     () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
     [state.transactions, spots, allParties]
   );
-
-  // Bereken dagelijkse waarden voor de grafiek + sla op in Supabase
-  const timeSeries = React.useMemo(
-    () => state.transactions?.length ? buildValueTimeSeries(state.transactions, allParties, spots) : [],
-    [state.transactions, allParties, spots]
-  );
-  const dailyValueTimer = React.useRef(null);
-  React.useEffect(() => {
-    if (!timeSeries?.length) return;
-    const client = getSupabaseClient(supabaseConfig);
-    if (!client) return;
-    clearTimeout(dailyValueTimer.current);
-    dailyValueTimer.current = setTimeout(() => {
-      supabaseSaveDailyValues(client, timeSeries).catch(() => {});
-    }, 8000); // 8s debounce — grafiek hoeft niet direct te synchen
-  }, [timeSeries, supabaseConfig]);
 
   const sbOk = !!(supabaseConfig.url && supabaseConfig.anonKey);
 
