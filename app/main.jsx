@@ -52,21 +52,117 @@ function getSupabaseClient(cfg) {
   catch { return null; }
 }
 
-async function supabaseLoad(client) {
-  const { data, error } = await client
-    .from('portfolio')
-    .select('data')
-    .eq('id', 'main')
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data?.data || null;
+// camelCase ↔ snake_case helpers voor de transactions tabel
+function txToRow(t) {
+  return {
+    id:            t.id,
+    party:         t.party,
+    type:          t.type,
+    date:          t.date,
+    quantity:      t.quantity      != null ? +t.quantity      : null,
+    unit_price_eur:t.unitPriceEur  != null ? +t.unitPriceEur  : null,
+    fee_eur:       t.feeEur        != null ? +t.feeEur        : null,
+    amount_eur:    t.amountEur     != null ? +t.amountEur     : null,
+    note:          t.note          || null,
+    metal_type:    t.metalType     || null,
+    silver_unit:   t.silverUnit    || null,
+    gold_unit:     t.goldUnit      || null,
+    instrument:    t.instrument    || null,
+    t212_id:       t._t212Id       || null,
+    value_eur:     t.valueEur      != null ? +t.valueEur      : null,
+  };
 }
 
-async function supabaseSave(client, payload) {
+function rowToTx(r) {
+  const t = { id: r.id, party: r.party, type: r.type, date: r.date };
+  if (r.quantity      != null) t.quantity     = r.quantity;
+  if (r.unit_price_eur!= null) t.unitPriceEur = r.unit_price_eur;
+  if (r.fee_eur       != null) t.feeEur       = r.fee_eur;
+  if (r.amount_eur    != null) t.amountEur    = r.amount_eur;
+  if (r.note)                  t.note         = r.note;
+  if (r.metal_type)            t.metalType    = r.metal_type;
+  if (r.silver_unit)           t.silverUnit   = r.silver_unit;
+  if (r.gold_unit)             t.goldUnit     = r.gold_unit;
+  if (r.instrument)            t.instrument   = r.instrument;
+  if (r.t212_id)               t._t212Id      = r.t212_id;
+  if (r.value_eur     != null) t.valueEur     = r.value_eur;
+  return t;
+}
+
+// Laad alles: instellingen uit portfolio-tabel, transacties uit transactions-tabel
+async function supabaseLoadAll(client) {
+  const [settingsRes, txRes] = await Promise.all([
+    client.from('portfolio').select('data').eq('id', 'main').maybeSingle(),
+    client.from('transactions').select('*').order('date', { ascending: true }),
+  ]);
+  if (settingsRes.error) throw new Error(settingsRes.error.message);
+  if (txRes.error) throw new Error(txRes.error.message);
+
+  const settings = settingsRes.data?.data || {};
+  let transactions;
+
+  if (txRes.data?.length > 0) {
+    // Genormaliseerde tabel heeft data → gebruik die
+    transactions = txRes.data.map(rowToTx);
+  } else if (settings.transactions?.length > 0) {
+    // Migratie: zet oude JSON-blob-transacties over naar genormaliseerde tabel
+    transactions = settings.transactions;
+    supabaseSyncTransactions(client, transactions).catch(() => {}); // achtergrond-migratie
+  } else {
+    transactions = [];
+  }
+
+  const { transactions: _, ...settingsClean } = settings;
+  return { ...settingsClean, transactions };
+}
+
+// Sla instellingen op in portfolio-tabel (zonder transacties)
+async function supabaseSaveSettings(client, state) {
+  const { transactions: _, ...settings } = state;
   const { error } = await client
     .from('portfolio')
-    .upsert({ id: 'main', data: payload, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+    .upsert({ id: 'main', data: settings, updated_at: new Date().toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
+}
+
+// Sync alle transacties naar de transactions-tabel (upsert + verwijder verouderde)
+async function supabaseSyncTransactions(client, transactions) {
+  if (!transactions?.length) return;
+  const rows = transactions.map(txToRow);
+
+  // Upsert in batches van 100
+  for (let i = 0; i < rows.length; i += 100) {
+    const { error } = await client
+      .from('transactions')
+      .upsert(rows.slice(i, i + 100), { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+  }
+
+  // Verwijder rijen die niet meer in de huidige state zitten
+  const { data: dbRows } = await client.from('transactions').select('id');
+  const currentIds = new Set(transactions.map(t => t.id));
+  const toDelete = (dbRows || []).map(r => r.id).filter(id => !currentIds.has(id));
+  if (toDelete.length > 0) {
+    await client.from('transactions').delete().in('id', toDelete);
+  }
+}
+
+// Sla dagelijkse portefeuille-waarden op voor de grafiek
+async function supabaseSaveDailyValues(client, timeSeries) {
+  if (!timeSeries?.length) return;
+  const rows = timeSeries.map(p => ({
+    date:         p.date,
+    total_eur:    +p.total.toFixed(2),
+    invested_eur: +p.invested.toFixed(2),
+    updated_at:   new Date().toISOString(),
+  }));
+  // Upsert in batches van 500
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await client
+      .from('portfolio_daily_values')
+      .upsert(rows.slice(i, i + 500), { onConflict: 'date' });
+    if (error) throw new Error(error.message);
+  }
 }
 
 // ── Spot price fetchers ───────────────────────────────────────
@@ -239,7 +335,7 @@ function App() {
     const client = getSupabaseClient(supabaseConfig);
     if (!client) return;
     setSyncStatus({ loading: true, error: null, syncedAt: null });
-    supabaseLoad(client)
+    supabaseLoadAll(client)
       .then(data => {
         if (data?.transactions) setState(data);
         setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
@@ -255,14 +351,16 @@ function App() {
       .catch(() => {});
   }, []); // eenmalig bij mount
 
-  // Automatisch opslaan in Supabase 3 seconden na elke state-wijziging
+  // Automatisch opslaan: instellingen + transacties syncen naar Supabase
   React.useEffect(() => {
-    if (!supabaseConfig.url || !supabaseConfig.anonKey) return;
     const client = getSupabaseClient(supabaseConfig);
     if (!client) return;
     clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
-      supabaseSave(client, state)
+      Promise.all([
+        supabaseSaveSettings(client, state),
+        supabaseSyncTransactions(client, state.transactions),
+      ])
         .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
         .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
     }, 3000);
@@ -421,7 +519,10 @@ function App() {
     if (!client) return;
     setSyncStatus({ loading: true, error: null, syncedAt: null });
     try {
-      await supabaseSave(client, state);
+      await Promise.all([
+        supabaseSaveSettings(client, state),
+        supabaseSyncTransactions(client, state.transactions),
+      ]);
       setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
     } catch (e) {
       setSyncStatus({ loading: false, error: e.message, syncedAt: null });
@@ -489,6 +590,22 @@ function App() {
     () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
     [state.transactions, spots, allParties]
   );
+
+  // Bereken dagelijkse waarden voor de grafiek + sla op in Supabase
+  const timeSeries = React.useMemo(
+    () => state.transactions?.length ? buildValueTimeSeries(state.transactions, allParties, spots) : [],
+    [state.transactions, allParties, spots]
+  );
+  const dailyValueTimer = React.useRef(null);
+  React.useEffect(() => {
+    if (!timeSeries?.length) return;
+    const client = getSupabaseClient(supabaseConfig);
+    if (!client) return;
+    clearTimeout(dailyValueTimer.current);
+    dailyValueTimer.current = setTimeout(() => {
+      supabaseSaveDailyValues(client, timeSeries).catch(() => {});
+    }, 8000); // 8s debounce — grafiek hoeft niet direct te synchen
+  }, [timeSeries, supabaseConfig]);
 
   const sbOk = !!(supabaseConfig.url && supabaseConfig.anonKey);
 
