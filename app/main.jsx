@@ -91,21 +91,30 @@ function rowToTx(r) {
 
 // Laad alles: instellingen uit portfolio-tabel, transacties uit transactions-tabel
 async function supabaseLoadAll(client) {
-  const [settingsRes, txRes, priceRes] = await Promise.all([
+  const [settingsRes, txRes, priceRes, dailyRes] = await Promise.all([
     client.from('portfolio').select('data').eq('id', 'main').maybeSingle(),
     client.from('transactions').select('*').order('date', { ascending: true }),
     client.from('asset_price_history').select('*').order('date', { ascending: true }),
+    client.from('portfolio_daily_values').select('*').order('date', { ascending: true }),
   ]);
 
   // Als een tabel nog niet bestaat (user heeft SQL nog niet gedraaid), gooi geen fout
   const settingsErr = settingsRes.error;
   const txErr = txRes.error;
   const priceErr = priceRes.error;
+  const dailyErr = dailyRes.error;
   if (settingsErr && txErr) throw new Error(settingsErr.message); // beide fout → echt probleem
 
   const settings = settingsRes.data?.data || {};
   let transactions = null;
   const priceState = !priceErr ? priceRowsToState(priceRes.data || []) : {};
+  const portfolioDailyValues = !dailyErr
+    ? (dailyRes.data || []).map(r => ({
+        date: r.date,
+        total: +r.total_eur,
+        invested: +r.invested_eur,
+      })).filter(r => r.date && Number.isFinite(r.total) && Number.isFinite(r.invested))
+    : [];
 
   if (!txErr && txRes.data?.length > 0) {
     // Genormaliseerde tabel heeft data → gebruik die
@@ -117,10 +126,11 @@ async function supabaseLoadAll(client) {
   }
 
   // Alleen setState als er écht data is — anders lokale state bewaren
-  if (!transactions && !Object.keys(priceState).length) return null; // signaal: gebruik localStorage
+  if (!transactions && !Object.keys(priceState).length && !portfolioDailyValues.length) return null; // signaal: gebruik localStorage
 
   const {
     transactions: _,
+    portfolioDailyValues: __,
     meesmanNavHistory,
     goldHistory,
     silverHistory,
@@ -130,13 +140,20 @@ async function supabaseLoadAll(client) {
     lastWeeklySpotSave,
     ...settingsClean
   } = settings;
-  return { ...settingsClean, ...priceState, ...(transactions ? { transactions } : {}) };
+  return {
+    ...settingsClean,
+    ...priceState,
+    _transactionsLoaded: !txErr,
+    ...(portfolioDailyValues.length ? { portfolioDailyValues } : {}),
+    ...(transactions ? { transactions } : {}),
+  };
 }
 
 // Sla instellingen op in portfolio-tabel (zonder transacties)
 async function supabaseSaveSettings(client, state) {
   const {
     transactions: _,
+    portfolioDailyValues: __,
     meesmanNavHistory,
     goldHistory,
     silverHistory,
@@ -425,6 +442,8 @@ function App() {
   const [supabaseConfig, setSupabaseConfig] = React.useState(loadSupabaseConfig);
   const [syncStatus, setSyncStatus] = React.useState({ loading: false, error: null, syncedAt: null });
   const syncTimerRef = React.useRef(null);
+  const supabaseLoadedRef = React.useRef(false);
+  const transactionsLoadedRef = React.useRef(false);
   const [isMobile, setIsMobile] = React.useState(() => window.matchMedia('(max-width: 767px)').matches);
   const [mobileTab, setMobileTab] = React.useState('home');
   const [mobileAddTrigger, setMobileAddTrigger] = React.useState(0);
@@ -455,24 +474,33 @@ function App() {
     setSyncStatus({ loading: true, error: null, syncedAt: null });
     supabaseLoadAll(client)
       .then(data => {
-        if (data) setState(s => {
-          const meesman = normalizeMeesmanHistory(mergePriceHistory(s.meesmanNavHistory, data.meesmanNavHistory));
+        if (data) {
+          const { _transactionsLoaded, ...remoteData } = data;
+          transactionsLoadedRef.current = _transactionsLoaded !== false;
+          setState(s => {
+          const meesman = normalizeMeesmanHistory(mergePriceHistory(s.meesmanNavHistory, remoteData.meesmanNavHistory));
           return {
             ...s,
-            ...data,
-            transactions: data.transactions?.length ? data.transactions : s.transactions,
+            ...remoteData,
+            transactions: remoteData.transactions?.length ? remoteData.transactions : s.transactions,
             meesmanNavEur: meesman.currentNav,
             meesmanNavHistory: meesman.history,
-            goldHistory:       mergePriceHistory(s.goldHistory,       data.goldHistory),
-            silverHistory:     mergePriceHistory(s.silverHistory,     data.silverHistory),
-            btcHistory:        mergePriceHistory(s.btcHistory,        data.btcHistory),
-            ethHistory:        mergePriceHistory(s.ethHistory,        data.ethHistory),
-            paxgHistory:       mergePriceHistory(s.paxgHistory,       data.paxgHistory),
+            goldHistory:       mergePriceHistory(s.goldHistory,       remoteData.goldHistory),
+            silverHistory:     mergePriceHistory(s.silverHistory,     remoteData.silverHistory),
+            btcHistory:        mergePriceHistory(s.btcHistory,        remoteData.btcHistory),
+            ethHistory:        mergePriceHistory(s.ethHistory,        remoteData.ethHistory),
+            paxgHistory:       mergePriceHistory(s.paxgHistory,       remoteData.paxgHistory),
           };
-        }); // nooit lokale transacties wissen met lege Supabase
+        });
+        } // nooit lokale transacties wissen met lege Supabase
+        supabaseLoadedRef.current = true;
         setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
       })
-      .catch(e => setSyncStatus({ loading: false, error: e.message, syncedAt: null }));
+      .catch(e => {
+        supabaseLoadedRef.current = true;
+        transactionsLoadedRef.current = false;
+        setSyncStatus({ loading: false, error: e.message, syncedAt: null });
+      });
   }, [supabaseConfig.url, supabaseConfig.anonKey]);
 
   // Haal 1 jaar crypto-geschiedenis op als de history leeg is
@@ -499,6 +527,8 @@ function App() {
   React.useEffect(() => {
     const client = getSupabaseClient(supabaseConfig);
     if (!client) return;
+    if (!supabaseLoadedRef.current) return;
+    if (!transactionsLoadedRef.current) return;
     clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
       Promise.all([

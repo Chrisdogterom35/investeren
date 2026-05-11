@@ -3,6 +3,19 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://xlmbpohjlcwjubgiyjaw.s
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsbWJwb2hqbGN3anViZ2l5amF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjIyODksImV4cCI6MjA5MzYzODI4OX0.BXbY5_stirCdFLuXleBHu1VouYm1cguVZd3bjkygHlo';
 
+const PARTIES = [
+  { id: 'meesman', unit: 'part', priceAsset: 'meesman_aandelen_wereldwijd_totaal' },
+  { id: 'finst-btc', unit: 'crypto', priceAsset: 'btc_eur' },
+  { id: 'finst-eth', unit: 'crypto', priceAsset: 'eth_eur' },
+  { id: 'finst-paxg', unit: 'crypto', priceAsset: 'paxg_eur' },
+  { id: 'finst-top25', unit: 'bundle' },
+  { id: 'goldrepublic', unit: 'mixed', isMixed: true },
+  { id: 'trading212', unit: 'part' },
+  { id: 'goud', unit: 'gram', priceAsset: 'gold_eur_per_gram' },
+  { id: 'zilver', unit: 'ounce', priceAsset: 'silver_eur_per_ounce' },
+  { id: 'cash', unit: 'eur' },
+];
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -17,6 +30,24 @@ async function fetchText(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
   return res.text();
+}
+
+function silverToOz(qty, unit) {
+  return unit === 'gram' ? qty / OZ_TO_GRAM : qty;
+}
+
+function goldToGram(qty, unit) {
+  return unit === 'ounce' ? qty * OZ_TO_GRAM : qty;
+}
+
+function findPrice(history, asset, date) {
+  const rows = history[asset] || [];
+  let result = null;
+  for (const row of rows) {
+    if (row.date > date) break;
+    result = row.nav;
+  }
+  return result;
 }
 
 async function fetchSpotPrices() {
@@ -91,6 +122,232 @@ async function upsertRows(rows) {
   }
 }
 
+async function supabaseFetch(path) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
+  });
+  if (!res.ok) throw new Error(`Supabase fetch failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+async function supabaseFetchAll(path, pageSize = 1000) {
+  const rows = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const sep = path.includes('?') ? '&' : '?';
+    const page = await supabaseFetch(`${path}${sep}limit=${pageSize}&offset=${offset}`);
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function upsertPortfolioValue(row) {
+  await upsertPortfolioValues([row]);
+}
+
+async function upsertPortfolioValues(rows) {
+  if (!rows.length) return;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/portfolio_daily_values?on_conflict=date`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates',
+    },
+    body: JSON.stringify(rows),
+  });
+  if (!res.ok) throw new Error(`Portfolio value upsert failed: ${res.status} ${await res.text()}`);
+}
+
+function rowToTx(r) {
+  return {
+    id: r.id,
+    party: r.party,
+    type: r.type,
+    date: r.date,
+    quantity: r.quantity == null ? null : +r.quantity,
+    unitPriceEur: r.unit_price_eur == null ? null : +r.unit_price_eur,
+    feeEur: r.fee_eur == null ? null : +r.fee_eur,
+    amountEur: r.amount_eur == null ? null : +r.amount_eur,
+    note: r.note || null,
+    metalType: r.metal_type || null,
+    silverUnit: r.silver_unit || null,
+    goldUnit: r.gold_unit || null,
+    valueEur: r.value_eur == null ? null : +r.value_eur,
+  };
+}
+
+function priceRowsByAsset(rows) {
+  return rows.reduce((acc, row) => {
+    if (!acc[row.asset]) acc[row.asset] = [];
+    acc[row.asset].push({ date: row.date, nav: +row.nav });
+    return acc;
+  }, {});
+}
+
+function calculatePortfolioValue(date, transactions, history) {
+  const partyMap = Object.fromEntries(PARTIES.map(p => [p.id, p]));
+  const state = Object.fromEntries(PARTIES.map(p => [p.id, {
+    qty: 0,
+    goldQty: 0,
+    silverQty: 0,
+    cost: 0,
+    lastUnitPx: null,
+    lastTotal: null,
+  }]));
+
+  transactions
+    .filter(t => t.date <= date)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .forEach(t => {
+      const p = partyMap[t.party];
+      const s = state[t.party];
+      if (!p || !s) return;
+      if (t.feeEur) s.cost += +t.feeEur;
+      switch (t.type) {
+        case 'inleg': {
+          if (p.unit === 'eur' || p.unit === 'bundle') {
+            const amount = +t.amountEur || 0;
+            s.qty += amount;
+            s.cost += amount;
+            if (s.lastTotal != null) s.lastTotal += amount;
+          }
+          break;
+        }
+        case 'opname': {
+          if (p.unit === 'eur' || p.unit === 'bundle') {
+            const amount = +t.amountEur || 0;
+            if (s.qty > 0) s.cost = Math.max(0, s.cost - (s.cost * (amount / s.qty)));
+            s.qty = Math.max(0, s.qty - amount);
+            if (s.lastTotal != null) s.lastTotal = Math.max(0, s.lastTotal - amount);
+          } else {
+            const qty = +t.quantity || 0;
+            const totalQty = p.isMixed ? s.goldQty + s.silverQty : s.qty;
+            const outQty = p.isMixed
+              ? ((t.metalType || 'goud') === 'goud' ? goldToGram(qty, t.goldUnit) : silverToOz(qty, t.silverUnit))
+              : qty;
+            const avg = totalQty > 0 ? s.cost / totalQty : 0;
+            s.cost = Math.max(0, s.cost - outQty * avg);
+            if (p.isMixed) {
+              if ((t.metalType || 'goud') === 'goud') s.goldQty = Math.max(0, s.goldQty - outQty);
+              else s.silverQty = Math.max(0, s.silverQty - outQty);
+            } else {
+              s.qty = Math.max(0, s.qty - qty);
+            }
+          }
+          break;
+        }
+        case 'koop':
+        case 'cashback': {
+          const qty = +t.quantity || 0;
+          if (p.isMixed) {
+            if ((t.metalType || 'goud') === 'goud') s.goldQty += goldToGram(qty, t.goldUnit);
+            else s.silverQty += silverToOz(qty, t.silverUnit);
+          } else {
+            s.qty += qty;
+          }
+          s.cost += qty * (+t.unitPriceEur || 0);
+          if (s.lastTotal != null) s.lastTotal += qty * (+t.unitPriceEur || 0);
+          break;
+        }
+        case 'dividend': {
+          const qty = +t.quantity || 0;
+          if (qty > 0) {
+            if (p.isMixed) {
+              if ((t.metalType || 'goud') === 'goud') s.goldQty += goldToGram(qty, t.goldUnit);
+              else s.silverQty += silverToOz(qty, t.silverUnit);
+            } else {
+              s.qty += qty;
+            }
+          }
+          break;
+        }
+        case 'verkoop': {
+          const qty = +t.quantity || 0;
+          const totalQty = p.isMixed ? s.goldQty + s.silverQty : s.qty;
+          const avg = totalQty > 0 ? s.cost / totalQty : 0;
+          const outQty = p.isMixed
+            ? ((t.metalType || 'goud') === 'goud' ? goldToGram(qty, t.goldUnit) : silverToOz(qty, t.silverUnit))
+            : qty;
+          s.cost = Math.max(0, s.cost - outQty * avg);
+          if (p.isMixed) {
+            if ((t.metalType || 'goud') === 'goud') s.goldQty = Math.max(0, s.goldQty - outQty);
+            else s.silverQty = Math.max(0, s.silverQty - outQty);
+          } else {
+            s.qty = Math.max(0, s.qty - qty);
+          }
+          break;
+        }
+        case 'kosten':
+          s.cost += +t.amountEur || 0;
+          break;
+        case 'waardering':
+          if (t.unitPriceEur != null) s.lastUnitPx = +t.unitPriceEur;
+          if (t.valueEur != null) s.lastTotal = +t.valueEur;
+          if ((p.unit === 'gram' || p.unit === 'ounce') && t.quantity != null) s.qty = +t.quantity;
+          break;
+      }
+    });
+
+  let total = 0;
+  let invested = 0;
+  for (const p of PARTIES) {
+    const s = state[p.id];
+    let value = 0;
+    if (p.isMixed) {
+      const gold = findPrice(history, 'gold_eur_per_gram', date) || 0;
+      const silver = findPrice(history, 'silver_eur_per_ounce', date) || 0;
+      value = s.lastTotal ?? (s.goldQty * gold + s.silverQty * silver);
+    } else if (p.unit === 'crypto' || p.unit === 'part' || p.unit === 'gram' || p.unit === 'ounce') {
+      const price = s.lastUnitPx ?? (p.priceAsset ? findPrice(history, p.priceAsset, date) : null);
+      value = s.lastTotal ?? ((price || 0) * s.qty);
+    } else if (p.unit === 'bundle') {
+      value = s.lastTotal ?? s.lastUnitPx ?? s.cost;
+    } else if (p.unit === 'eur') {
+      value = s.lastTotal ?? s.qty;
+    }
+    total += value;
+    invested += s.cost;
+  }
+  return {
+    date,
+    total_eur: +total.toFixed(2),
+    invested_eur: +invested.toFixed(2),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+async function updateWeeklyPortfolioValue(date) {
+  const rows = await buildPortfolioValueRows({ dates: [date] });
+  await upsertPortfolioValues(rows);
+  return rows[0];
+}
+
+async function buildPortfolioValueRows({ dates, startDate = '2025-01-01', endDate = todayIso(), weeklyOnly = false } = {}) {
+  const [txRows, priceRows] = await Promise.all([
+    supabaseFetchAll('transactions?select=*&order=date.asc'),
+    supabaseFetchAll(`asset_price_history?select=asset,date,nav&date=lte.${endDate}&order=date.asc`),
+  ]);
+  const history = priceRowsByAsset(priceRows);
+  const valueDates = dates || [...new Set(priceRows
+    .map(r => r.date)
+    .filter(date => date >= startDate && date <= endDate))]
+    .filter(date => !weeklyOnly || new Date(`${date}T00:00:00Z`).getUTCDay() === 1);
+  return valueDates.map(date => calculatePortfolioValue(date, txRows.map(rowToTx), history));
+}
+
+async function backfillPortfolioValues({ startDate = '2025-01-01', endDate = todayIso(), weeklyOnly = false } = {}) {
+  const rows = await buildPortfolioValueRows({ startDate, endDate, weeklyOnly });
+  for (let i = 0; i < rows.length; i += 500) {
+    await upsertPortfolioValues(rows.slice(i, i + 500));
+  }
+  return rows;
+}
+
 module.exports = async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) {
     res.setHeader('Allow', 'GET, POST');
@@ -138,10 +395,16 @@ module.exports = async function handler(req, res) {
     }
 
     await upsertRows(rows);
+    const backfillMode = req.query?.backfill;
+    const portfolioRows = backfillMode
+      ? await backfillPortfolioValues({ weeklyOnly: backfillMode === 'weekly' })
+      : [await updateWeeklyPortfolioValue(date)];
     return res.status(200).json({
       ok: true,
       saved: rows.length,
       date,
+      portfolioValue: portfolioRows[portfolioRows.length - 1],
+      portfolioValuesSaved: portfolioRows.length,
       assets: rows.map(r => r.asset),
       warnings: [metals, crypto, meesman]
         .filter(r => r.status === 'rejected')

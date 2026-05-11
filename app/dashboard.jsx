@@ -70,10 +70,15 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
   const totalPnlPct  = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
   const totalFees    = state.transactions.reduce((s, t) => s + (+t.feeEur || 0) + (t.type === 'kosten' ? (+t.amountEur || 0) : 0), 0);
 
-  const timeSeries = React.useMemo(
-    () => buildValueTimeSeries(state.transactions, allParties, spots),
-    [state.transactions, spots, allParties]
-  );
+  const timeSeries = React.useMemo(() => {
+    const supabaseSeries = (state.portfolioDailyValues || [])
+      .map(p => ({ date: p.date, total: +p.total, invested: +p.invested }))
+      .filter(p => p.date && Number.isFinite(p.total) && Number.isFinite(p.invested))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return supabaseSeries.length
+      ? supabaseSeries
+      : buildValueTimeSeries(state.transactions, allParties, spots);
+  }, [state.portfolioDailyValues, state.transactions, spots, allParties]);
   const partyTimeSeries = React.useMemo(
     () => buildPartyTimeSeries(state.transactions, allParties, spots),
     [state.transactions, spots, allParties]
