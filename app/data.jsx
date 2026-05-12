@@ -23,7 +23,7 @@ const PARTIES = [
   { id: 'finst-paxg',  name: 'Pax Gold',       category: 'Crypto',   subtitle: 'PAXG via Finst',          color: 'oklch(76% 0.14 85)',  unit: 'crypto', unitLabel: 'PAXG',  goal: 1500, spotKey: 'paxgSpotEur' },
   { id: 'finst-top25', name: 'Top 25 Bundel',  category: 'Crypto',   subtitle: 'Top 25 tokens via Finst', color: 'oklch(62% 0.15 195)', unit: 'bundle', unitLabel: '€',     goal: 1000 },
   { id: 'goldrepublic', name: 'Goldrepublic',  category: 'Edelmetaal',   subtitle: 'Goud & zilver in kluis',   color: 'oklch(78% 0.14 85)',  unit: 'mixed', unitLabel: 'g/oz',  goal: 5000, isMixed: true },
-  { id: 'trading212',   name: 'Trading 212',   category: 'Broker',       subtitle: "Aandelen & ETF's",         color: 'oklch(55% 0.16 145)', unit: 'part',  unitLabel: 'stuks', goal: 5000 },
+  { id: 'trading212',   name: 'Trading 212',   category: 'Broker',       subtitle: "Aandelen & ETF's",         color: 'oklch(55% 0.16 145)', unit: 'bundle',unitLabel: '€',     goal: 5000 },
   { id: 'goud',         name: 'Fysiek Goud',   category: 'Edelmetaal',   subtitle: 'Eigen bezit — gram',       color: 'oklch(75% 0.15 70)',  unit: 'gram',  unitLabel: 'g',     goal: 20 },
   { id: 'zilver',       name: 'Fysiek Zilver', category: 'Edelmetaal',   subtitle: 'Eigen bezit — ounce',      color: 'oklch(70% 0.03 240)', unit: 'ounce', unitLabel: 'oz',    goal: 30 },
   { id: 'cash',         name: 'Cash',          category: 'Liquide',      subtitle: 'Directe reserve',          color: 'oklch(55% 0.05 160)', unit: 'eur',   unitLabel: '€',     goal: 2000 },
@@ -132,7 +132,7 @@ function loadState() {
       if (!parsed.customParties) parsed.customParties = [];
       if (!parsed.hiddenParties) parsed.hiddenParties = [];
       if (!parsed.tileMetrics)   parsed.tileMetrics   = {};
-      parsed.transactions = [];
+      if (!parsed.transactions)  parsed.transactions  = [];
       // Migration: Meesman NAV verhuisd van tweaks naar state
       if (parsed.meesmanNavEur == null) {
         parsed.meesmanNavEur = (window.TWEAKS && window.TWEAKS.meesmanNavEur) || 100.4;
@@ -161,9 +161,14 @@ function loadState() {
 
 function saveState(state) {
   try {
-    const { transactions, ...localSettings } = state;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...localSettings, transactions: [] }));
-  } catch (e) {}
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    // Storage quota: bewaar zonder grote history-arrays
+    try {
+      const { goldHistory, silverHistory, btcHistory, ethHistory, paxgHistory, ...slim } = state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(slim));
+    } catch {}
+  }
 }
 
 const TX_TYPES = [
