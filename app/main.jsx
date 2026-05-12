@@ -89,20 +89,34 @@ function rowToTx(r) {
   return t;
 }
 
-// Laad alles uit de portfolio-tabel (één JSON blob, geen aparte tabellen nodig)
+// Laad alles uit Supabase: portfolio-blob + eventueel aparte transactions-tabel (legacy)
 async function supabaseLoadAll(client) {
-  const { data, error } = await client
-    .from('portfolio')
-    .select('data')
-    .eq('id', 'main')
-    .maybeSingle();
-  if (error) {
-    // Tabel bestaat nog niet → use localStorage, geen fout gooien
-    console.warn('[Supabase] portfolio tabel niet bereikbaar:', error.message);
+  // Laad portfolio-blob en transactions-tabel tegelijk
+  const [portfolioRes, txRes] = await Promise.all([
+    client.from('portfolio').select('data').eq('id', 'main').maybeSingle(),
+    client.from('transactions').select('*').order('date', { ascending: true }),
+  ]);
+
+  if (portfolioRes.error && txRes.error) {
+    // Geen van beide tabellen bereikbaar → gebruik localStorage
+    console.warn('[Supabase] geen tabellen bereikbaar:', portfolioRes.error.message);
     return null;
   }
-  if (!data?.data) return null; // lege database → gebruik localStorage
-  return data.data;             // volledig state-object inclusief transacties
+
+  const portfolioData = portfolioRes.data?.data || {};
+
+  // Bepaal transacties: aparte tabel heeft prioriteit (meest up-to-date)
+  let transactions = null;
+  if (!txRes.error && txRes.data?.length > 0) {
+    transactions = txRes.data.map(rowToTx);
+  } else if (portfolioData.transactions?.length > 0) {
+    transactions = portfolioData.transactions;
+  }
+
+  // Als er niets in Supabase staat, gebruik localStorage
+  if (!transactions && !portfolioData.widgets && !portfolioData.meesmanNavHistory) return null;
+
+  return { ...portfolioData, ...(transactions ? { transactions } : {}) };
 }
 
 // Sla de volledige state op in de portfolio-tabel (inclusief transacties + histories)
