@@ -83,6 +83,19 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     () => buildPartyTimeSeries(state.transactions, allParties, spots),
     [state.transactions, spots, allParties]
   );
+  const allocationTimeSeries = React.useMemo(() => {
+    const startDate = '2025-01-01';
+    const firstPoint = partyTimeSeries.dates.findIndex(d => d >= startDate);
+    if (firstPoint <= 0) return partyTimeSeries;
+    return {
+      dates: partyTimeSeries.dates.slice(firstPoint),
+      total: partyTimeSeries.total.slice(firstPoint),
+      invested: partyTimeSeries.invested.slice(firstPoint),
+      byParty: Object.fromEntries(
+        Object.entries(partyTimeSeries.byParty).map(([id, values]) => [id, values.slice(firstPoint)])
+      ),
+    };
+  }, [partyTimeSeries]);
   const monthly = React.useMemo(() => buildMonthlyFlows(state.transactions), [state.transactions]);
 
   const ytd = React.useMemo(() => calcYTDReturn(timeSeries), [timeSeries]);
@@ -245,7 +258,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
                 );
               })}
             </div>
-            <AllocationLineChart timeSeries={partyTimeSeries} parties={visibleParties} height={260} />
+            <AllocationLineChart timeSeries={allocationTimeSeries} parties={visibleParties} height={260} />
           </Card>
         );
       }

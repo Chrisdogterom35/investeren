@@ -169,7 +169,8 @@ async function supabaseSaveSettings(client, state) {
   if (error) throw new Error(error.message);
 }
 
-// Sync alle transacties naar de transactions-tabel (upsert + verwijder verouderde)
+// Sync alle transacties naar de transactions-tabel.
+// Bewust alleen upsert: een incomplete client-state mag nooit rijen uit Supabase verwijderen.
 async function supabaseSyncTransactions(client, transactions) {
   if (!transactions?.length) return;
   const rows = transactions.map(txToRow);
@@ -180,14 +181,6 @@ async function supabaseSyncTransactions(client, transactions) {
       .from('transactions')
       .upsert(rows.slice(i, i + 100), { onConflict: 'id' });
     if (error) throw new Error(error.message);
-  }
-
-  // Verwijder rijen die niet meer in de huidige state zitten
-  const { data: dbRows } = await client.from('transactions').select('id');
-  const currentIds = new Set(transactions.map(t => t.id));
-  const toDelete = (dbRows || []).map(r => r.id).filter(id => !currentIds.has(id));
-  if (toDelete.length > 0) {
-    await client.from('transactions').delete().in('id', toDelete);
   }
 }
 
