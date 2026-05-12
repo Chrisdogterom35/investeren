@@ -52,79 +52,145 @@ function getSupabaseClient(cfg) {
   catch { return null; }
 }
 
-// camelCase ↔ snake_case helpers voor de transactions tabel
+// camelCase <-> snake_case helpers voor de transactions tabel
 function txToRow(t) {
   return {
-    id:            t.id,
-    party:         t.party,
-    type:          t.type,
-    date:          t.date,
-    quantity:      t.quantity      != null ? +t.quantity      : null,
-    unit_price_eur:t.unitPriceEur  != null ? +t.unitPriceEur  : null,
-    fee_eur:       t.feeEur        != null ? +t.feeEur        : null,
-    amount_eur:    t.amountEur     != null ? +t.amountEur     : null,
-    note:          t.note          || null,
-    metal_type:    t.metalType     || null,
-    silver_unit:   t.silverUnit    || null,
-    gold_unit:     t.goldUnit      || null,
-    instrument:    t.instrument    || null,
-    t212_id:       t._t212Id       || null,
-    value_eur:     t.valueEur      != null ? +t.valueEur      : null,
+    id:             t.id,
+    party:          t.party,
+    type:           t.type,
+    date:           t.date,
+    quantity:       t.quantity     != null ? +t.quantity     : null,
+    unit_price_eur: t.unitPriceEur != null ? +t.unitPriceEur : null,
+    fee_eur:        t.feeEur       != null ? +t.feeEur       : null,
+    amount_eur:     t.amountEur    != null ? +t.amountEur    : null,
+    note:           t.note         || null,
+    metal_type:     t.metalType    || null,
+    silver_unit:    t.silverUnit   || null,
+    gold_unit:      t.goldUnit     || null,
+    instrument:     t.instrument   || null,
+    t212_id:        t._t212Id      || null,
+    value_eur:      t.valueEur     != null ? +t.valueEur     : null,
   };
 }
 
 function rowToTx(r) {
   const t = { id: r.id, party: r.party, type: r.type, date: r.date };
-  if (r.quantity      != null) t.quantity     = r.quantity;
-  if (r.unit_price_eur!= null) t.unitPriceEur = r.unit_price_eur;
-  if (r.fee_eur       != null) t.feeEur       = r.fee_eur;
-  if (r.amount_eur    != null) t.amountEur    = r.amount_eur;
-  if (r.note)                  t.note         = r.note;
-  if (r.metal_type)            t.metalType    = r.metal_type;
-  if (r.silver_unit)           t.silverUnit   = r.silver_unit;
-  if (r.gold_unit)             t.goldUnit     = r.gold_unit;
-  if (r.instrument)            t.instrument   = r.instrument;
-  if (r.t212_id)               t._t212Id      = r.t212_id;
-  if (r.value_eur     != null) t.valueEur     = r.value_eur;
+  if (r.quantity       != null) t.quantity     = +r.quantity;
+  if (r.unit_price_eur != null) t.unitPriceEur = +r.unit_price_eur;
+  if (r.fee_eur        != null) t.feeEur       = +r.fee_eur;
+  if (r.amount_eur     != null) t.amountEur    = +r.amount_eur;
+  if (r.note)                   t.note         = r.note;
+  if (r.metal_type)             t.metalType    = r.metal_type;
+  if (r.silver_unit)            t.silverUnit   = r.silver_unit;
+  if (r.gold_unit)              t.goldUnit     = r.gold_unit;
+  if (r.instrument)             t.instrument   = r.instrument;
+  if (r.t212_id)                t._t212Id      = r.t212_id;
+  if (r.value_eur      != null) t.valueEur     = +r.value_eur;
   return t;
 }
 
-// Laad alles uit Supabase: portfolio-blob + eventueel aparte transactions-tabel (legacy)
+function mergeById(local = [], remote = []) {
+  const m = new Map();
+  (local || []).forEach(item => item?.id && m.set(item.id, item));
+  (remote || []).forEach(item => item?.id && m.set(item.id, item));
+  return [...m.values()];
+}
+
+function priceRowsToState(rows = []) {
+  const byAsset = rows.reduce((acc, row) => {
+    if (!row?.asset || !row.date || row.nav == null) return acc;
+    if (!acc[row.asset]) acc[row.asset] = [];
+    acc[row.asset].push({ date: row.date, nav: +row.nav });
+    return acc;
+  }, {});
+  return {
+    goldHistory:       byAsset.gold_eur_per_gram || [],
+    silverHistory:     byAsset.silver_eur_per_ounce || [],
+    btcHistory:        byAsset.btc_eur || [],
+    ethHistory:        byAsset.eth_eur || [],
+    paxgHistory:       byAsset.paxg_eur || [],
+    meesmanNavHistory: normalizeMeesmanHistory(byAsset.meesman_aandelen_wereldwijd_totaal || []).history,
+  };
+}
+
+// Laad alles uit Supabase: instellingen, transacties en prijs-historie.
 async function supabaseLoadAll(client) {
-  // Laad portfolio-blob en transactions-tabel tegelijk
-  const [portfolioRes, txRes] = await Promise.all([
+  const [portfolioRes, txRes, priceRes, valueRes] = await Promise.all([
     client.from('portfolio').select('data').eq('id', 'main').maybeSingle(),
     client.from('transactions').select('*').order('date', { ascending: true }),
+    client.from('asset_price_history').select('asset,date,nav').gte('date', '2025-01-01').order('date', { ascending: true }),
+    client.from('portfolio_daily_values').select('date,total_eur,invested_eur').gte('date', '2025-01-01').order('date', { ascending: true }),
   ]);
 
-  if (portfolioRes.error && txRes.error) {
-    // Geen van beide tabellen bereikbaar → gebruik localStorage
-    console.warn('[Supabase] geen tabellen bereikbaar:', portfolioRes.error.message);
+  if (portfolioRes.error && txRes.error && priceRes.error && valueRes.error) {
+    console.warn('[Supabase] laden mislukt:', portfolioRes.error?.message || txRes.error?.message);
     return null;
   }
 
   const portfolioData = portfolioRes.data?.data || {};
+  const {
+    transactions: _legacyTransactions,
+    portfolioDailyValues: _legacyValues,
+    goldHistory: _legacyGold,
+    silverHistory: _legacySilver,
+    btcHistory: _legacyBtc,
+    ethHistory: _legacyEth,
+    paxgHistory: _legacyPaxg,
+    meesmanNavHistory: _legacyMeesman,
+    lastWeeklySpotSave: _legacyWeekly,
+    ...settings
+  } = portfolioData;
 
-  // Bepaal transacties: aparte tabel heeft prioriteit (meest up-to-date)
-  let transactions = null;
-  if (!txRes.error && txRes.data?.length > 0) {
-    transactions = txRes.data.map(rowToTx);
-  } else if (portfolioData.transactions?.length > 0) {
-    transactions = portfolioData.transactions;
-  }
+  const transactionsLoaded = !txRes.error;
+  const transactions = transactionsLoaded
+    ? (txRes.data || []).map(rowToTx)
+    : (_legacyTransactions || []);
 
-  // Als er niets in Supabase staat, gebruik localStorage
-  if (!transactions && !portfolioData.widgets && !portfolioData.meesmanNavHistory) return null;
+  const priceState = priceRes.error ? {} : priceRowsToState(priceRes.data || []);
+  const portfolioDailyValues = valueRes.error ? [] : (valueRes.data || []).map(row => ({
+    date: row.date,
+    total: +row.total_eur,
+    invested: +row.invested_eur,
+  }));
 
-  return { ...portfolioData, ...(transactions ? { transactions } : {}) };
+  return {
+    ...settings,
+    ...priceState,
+    transactions,
+    portfolioDailyValues,
+    _transactionsLoaded: transactionsLoaded,
+  };
 }
 
-// Sla de volledige state op in de portfolio-tabel (inclusief transacties + histories)
+// Sla alleen instellingen op in portfolio; transacties en koershistorie hebben eigen tabellen.
 async function supabaseSaveSettings(client, state) {
+  const {
+    transactions,
+    portfolioDailyValues,
+    goldHistory,
+    silverHistory,
+    btcHistory,
+    ethHistory,
+    paxgHistory,
+    meesmanNavHistory,
+    lastWeeklySpotSave,
+    ...settings
+  } = state;
   const { error } = await client
     .from('portfolio')
-    .upsert({ id: 'main', data: state, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+    .upsert({ id: 'main', data: settings, updated_at: new Date().toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
+}
+
+async function supabaseSyncTransactions(client, transactions = []) {
+  if (!transactions.length) return;
+  const rows = transactions.filter(t => t.id && t.party && t.type && t.date).map(txToRow);
+  for (let i = 0; i < rows.length; i += 200) {
+    const { error } = await client
+      .from('transactions')
+      .upsert(rows.slice(i, i + 200), { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+  }
 }
 
 // ── Spot price fetchers ───────────────────────────────────────
@@ -329,7 +395,9 @@ function mapT212Order(order) {
 // ─────────────────────────────────────────────────────────────
 function App() {
   const [state, setState]           = React.useState(() => loadState());
-  const [tweaks, setTweaks]         = React.useState(() => ({ ...window.TWEAKS }));
+  // tweaks zit nu binnen state.tweaks (gesynchroniseerd via Supabase).
+  // Deze afgeleide variabele houdt bestaande UI-code werkend.
+  const tweaks = state.tweaks || {};
   const [liveSpot, setLiveSpot]     = React.useState({});
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
   const [activeTab, setActiveTab]   = React.useState('dashboard');
@@ -340,6 +408,7 @@ function App() {
   const [syncStatus, setSyncStatus] = React.useState({ loading: false, error: null, syncedAt: null });
   const syncTimerRef = React.useRef(null);
   const supabaseLoadedRef = React.useRef(false);
+  const transactionsLoadedRef = React.useRef(false);
   const [isMobile, setIsMobile] = React.useState(() => window.matchMedia('(max-width: 767px)').matches);
   const [mobileTab, setMobileTab] = React.useState('home');
   const [mobileAddTrigger, setMobileAddTrigger] = React.useState(0);
@@ -371,30 +440,46 @@ function App() {
     supabaseLoadAll(client)
       .then(remoteData => {
         if (remoteData) {
+          const { _transactionsLoaded, ...remote } = remoteData;
+          transactionsLoadedRef.current = _transactionsLoaded !== false;
           setState(s => {
             const meesman = normalizeMeesmanHistory(
-              mergePriceHistory(s.meesmanNavHistory, remoteData.meesmanNavHistory)
+              mergePriceHistory(s.meesmanNavHistory, remote.meesmanNavHistory)
             );
+            const mergedTxs = mergeById(s.transactions, remote.transactions)
+              .sort((a, b) => a.date.localeCompare(b.date));
+
+            // Merge parties op ID — zelfde principe
+            const mergedParties = mergeById(s.parties, remote.parties);
+
+            // Merge tweaks (object): remote wint per key, maar lokaal blijft als remote geen waarde heeft
+            const mergedTweaks = { ...(s.tweaks || {}), ...(remote.tweaks || {}) };
+
             return {
               ...s,
-              ...remoteData,
-              // Nooit lokale transacties wissen als Supabase leeg is
-              transactions:    remoteData.transactions?.length ? remoteData.transactions : s.transactions,
-              meesmanNavEur:   meesman.currentNav,
+              ...remote,
+              transactions:      mergedTxs,
+              parties:           mergedParties.length ? mergedParties : (s.parties || []),
+              tweaks:            mergedTweaks,
+              meesmanNavEur:     meesman.currentNav,
               meesmanNavHistory: meesman.history,
-              goldHistory:     mergePriceHistory(s.goldHistory,   remoteData.goldHistory),
-              silverHistory:   mergePriceHistory(s.silverHistory, remoteData.silverHistory),
-              btcHistory:      mergePriceHistory(s.btcHistory,    remoteData.btcHistory),
-              ethHistory:      mergePriceHistory(s.ethHistory,    remoteData.ethHistory),
-              paxgHistory:     mergePriceHistory(s.paxgHistory,   remoteData.paxgHistory),
+              goldHistory:       mergePriceHistory(s.goldHistory,   remote.goldHistory),
+              silverHistory:     mergePriceHistory(s.silverHistory, remote.silverHistory),
+              btcHistory:        mergePriceHistory(s.btcHistory,    remote.btcHistory),
+              ethHistory:        mergePriceHistory(s.ethHistory,    remote.ethHistory),
+              paxgHistory:       mergePriceHistory(s.paxgHistory,   remote.paxgHistory),
+              portfolioDailyValues: remote.portfolioDailyValues?.length ? remote.portfolioDailyValues : (s.portfolioDailyValues || []),
             };
           });
+        } else {
+          transactionsLoadedRef.current = false;
         }
         supabaseLoadedRef.current = true;
         setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
       })
       .catch(e => {
         supabaseLoadedRef.current = true;
+        transactionsLoadedRef.current = false;
         setSyncStatus({ loading: false, error: e.message, syncedAt: null });
       });
   }, [supabaseConfig.url, supabaseConfig.anonKey]);
@@ -419,14 +504,18 @@ function App() {
       .catch(() => {});
   }, []); // eenmalig bij mount
 
-  // Automatisch opslaan: volledige state (incl. transacties) naar Supabase portfolio-tabel
+  // Automatisch opslaan: instellingen naar portfolio, transacties naar transactions.
   React.useEffect(() => {
     const client = getSupabaseClient(supabaseConfig);
     if (!client) return;
     if (!supabaseLoadedRef.current) return; // wacht op eerste load zodat we niets overschrijven
+    if (!transactionsLoadedRef.current) return; // voorkom dat een lege lokale set remote data overschrijft
     clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
-      supabaseSaveSettings(client, state)
+      Promise.all([
+        supabaseSaveSettings(client, state),
+        supabaseSyncTransactions(client, state.transactions || []),
+      ])
         .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
         .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
     }, 3000);
@@ -452,11 +541,13 @@ function App() {
     return () => window.removeEventListener('message', onMessage);
   }, []);
 
+  // Schrijft tweaks naar state.tweaks → wordt automatisch naar Supabase gesynchroniseerd
   const updateTweaks = React.useCallback(updater => {
-    setTweaks(prev => {
+    setState(s => {
+      const prev = s.tweaks || {};
       const next = typeof updater === 'function' ? updater(prev) : updater;
       try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits: next }, '*'); } catch {}
-      return next;
+      return { ...s, tweaks: next };
     });
   }, []);
 
@@ -589,7 +680,10 @@ function App() {
     if (!client) return;
     setSyncStatus({ loading: true, error: null, syncedAt: null });
     try {
-      await supabaseSaveSettings(client, state);
+      await Promise.all([
+        supabaseSaveSettings(client, state),
+        supabaseSyncTransactions(client, state.transactions || []),
+      ]);
       setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
     } catch (e) {
       setSyncStatus({ loading: false, error: e.message, syncedAt: null });
@@ -616,9 +710,19 @@ function App() {
           setImportMsg({ ok: false, text: 'Ongeldig bestand — geen transacties gevonden' }); return;
         }
         if (!data.widgets)       data.widgets       = DEFAULT_WIDGETS.map(w => ({ ...w }));
-        if (!data.customParties) data.customParties = [];
+        if (!data.parties || !data.parties.length) {
+          // Migreer legacy customParties + seed defaults
+          const ids = new Set();
+          const merged = [];
+          for (const p of [...PARTIES, ...(data.customParties || [])]) {
+            if (!ids.has(p.id)) { ids.add(p.id); merged.push(p); }
+          }
+          data.parties = merged;
+        }
+        delete data.customParties;
         if (!data.hiddenParties) data.hiddenParties = [];
         if (!data.tileMetrics)   data.tileMetrics   = {};
+        if (!data.tweaks)        data.tweaks        = { ...(window.TWEAKS || {}) };
         setState(data);
         setImportMsg({ ok: true, text: `${data.transactions.length} transacties geladen` });
       } catch { setImportMsg({ ok: false, text: 'Kon bestand niet lezen — geldig JSON?' }); }
@@ -649,9 +753,11 @@ function App() {
        state.goldHistory, state.silverHistory,
        state.btcHistory, state.ethHistory, state.paxgHistory]);
 
+  // state.parties is dé bron van waarheid (gesynced via Supabase).
+  // Bij allereerste run vóór migratie van loadState: fallback op de seed PARTIES.
   const allParties = React.useMemo(
-    () => [...PARTIES, ...(state.customParties || [])],
-    [state.customParties]
+    () => (state.parties && state.parties.length) ? state.parties : PARTIES,
+    [state.parties]
   );
   const summaries = React.useMemo(
     () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
@@ -920,7 +1026,7 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
               <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.6, padding:'8px', background:'var(--surface-2)', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>
                 <b>Setup:</b> Maak een gratis project aan op <b>supabase.com</b>. Voer de volgende SQL uit in de <b>SQL Editor</b> van je project:<br/><br/>
                 <code style={{ fontFamily:'var(--ff-mono)', display:'block', whiteSpace:'pre-wrap', fontSize:10, color:'var(--fg-muted)' }}>
-                  {`create table if not exists portfolio (\n  id text primary key,\n  data jsonb not null default '{}',\n  updated_at timestamptz default now()\n);\nalter table portfolio enable row level security;\ncreate policy "allow all" on portfolio\n  for all using (true) with check (true);`}
+                  {`create table if not exists portfolio (\n  id text primary key,\n  data jsonb not null default '{}',\n  updated_at timestamptz default now()\n);\nalter table portfolio enable row level security;\ndrop policy if exists "allow all" on portfolio;\ncreate policy "allow all" on portfolio\n  for all using (true) with check (true);`}
                 </code><br/>
                 Kopieer dan je <b>Project URL</b> en <b>anon public key</b> uit <b>Project Settings → API</b>.
               </div>

@@ -10,11 +10,18 @@ const PARTIES = [
   { id: 'finst-paxg', unit: 'crypto', priceAsset: 'paxg_eur' },
   { id: 'finst-top25', unit: 'bundle' },
   { id: 'goldrepublic', unit: 'mixed', isMixed: true },
-  { id: 'trading212', unit: 'part' },
+  { id: 'trading212', unit: 'bundle' },
   { id: 'goud', unit: 'gram', priceAsset: 'gold_eur_per_gram' },
   { id: 'zilver', unit: 'ounce', priceAsset: 'silver_eur_per_ounce' },
   { id: 'cash', unit: 'eur' },
 ];
+
+function mergeById(local = [], remote = []) {
+  const map = new Map();
+  local.forEach(item => item?.id && map.set(item.id, item));
+  remote.forEach(item => item?.id && map.set(item.id, { ...(map.get(item.id) || {}), ...item }));
+  return [...map.values()];
+}
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -144,6 +151,16 @@ async function supabaseFetchAll(path, pageSize = 1000) {
   return rows;
 }
 
+async function fetchPortfolioParties() {
+  try {
+    const rows = await supabaseFetch('portfolio?select=data&id=eq.main');
+    const parties = rows?.[0]?.data?.parties;
+    return Array.isArray(parties) && parties.length ? mergeById(PARTIES, parties) : PARTIES;
+  } catch {
+    return PARTIES;
+  }
+}
+
 async function upsertPortfolioValue(row) {
   await upsertPortfolioValues([row]);
 }
@@ -189,9 +206,9 @@ function priceRowsByAsset(rows) {
   }, {});
 }
 
-function calculatePortfolioValue(date, transactions, history) {
-  const partyMap = Object.fromEntries(PARTIES.map(p => [p.id, p]));
-  const state = Object.fromEntries(PARTIES.map(p => [p.id, {
+function calculatePortfolioValue(date, transactions, history, parties = PARTIES) {
+  const partyMap = Object.fromEntries(parties.map(p => [p.id, p]));
+  const state = Object.fromEntries(parties.map(p => [p.id, {
     qty: 0,
     goldQty: 0,
     silverQty: 0,
@@ -244,14 +261,21 @@ function calculatePortfolioValue(date, transactions, history) {
         case 'koop':
         case 'cashback': {
           const qty = +t.quantity || 0;
-          if (p.isMixed) {
+          const amount = (+t.amountEur || 0) || qty * (+t.unitPriceEur || 0);
+          if (p.unit === 'bundle') {
+            s.qty += amount;
+            s.cost += amount;
+            if (s.lastTotal != null) s.lastTotal += amount;
+          } else if (p.isMixed) {
             if ((t.metalType || 'goud') === 'goud') s.goldQty += goldToGram(qty, t.goldUnit);
             else s.silverQty += silverToOz(qty, t.silverUnit);
+            s.cost += qty * (+t.unitPriceEur || 0);
+            if (s.lastTotal != null) s.lastTotal += qty * (+t.unitPriceEur || 0);
           } else {
             s.qty += qty;
+            s.cost += qty * (+t.unitPriceEur || 0);
+            if (s.lastTotal != null) s.lastTotal += qty * (+t.unitPriceEur || 0);
           }
-          s.cost += qty * (+t.unitPriceEur || 0);
-          if (s.lastTotal != null) s.lastTotal += qty * (+t.unitPriceEur || 0);
           break;
         }
         case 'dividend': {
@@ -268,6 +292,13 @@ function calculatePortfolioValue(date, transactions, history) {
         }
         case 'verkoop': {
           const qty = +t.quantity || 0;
+          if (p.unit === 'bundle') {
+            const proceeds = (+t.amountEur || 0) || qty * (+t.unitPriceEur || 0);
+            if (s.qty > 0) s.cost = Math.max(0, s.cost - (s.cost * (proceeds / s.qty)));
+            s.qty = Math.max(0, s.qty - proceeds);
+            if (s.lastTotal != null) s.lastTotal = Math.max(0, s.lastTotal - proceeds);
+            break;
+          }
           const totalQty = p.isMixed ? s.goldQty + s.silverQty : s.qty;
           const avg = totalQty > 0 ? s.cost / totalQty : 0;
           const outQty = p.isMixed
@@ -295,7 +326,7 @@ function calculatePortfolioValue(date, transactions, history) {
 
   let total = 0;
   let invested = 0;
-  for (const p of PARTIES) {
+  for (const p of parties) {
     const s = state[p.id];
     let value = 0;
     if (p.isMixed) {
@@ -328,16 +359,17 @@ async function updateWeeklyPortfolioValue(date) {
 }
 
 async function buildPortfolioValueRows({ dates, startDate = '2025-01-01', endDate = todayIso(), weeklyOnly = false } = {}) {
-  const [txRows, priceRows] = await Promise.all([
+  const [txRows, priceRows, parties] = await Promise.all([
     supabaseFetchAll('transactions?select=*&order=date.asc'),
     supabaseFetchAll(`asset_price_history?select=asset,date,nav&date=lte.${endDate}&order=date.asc`),
+    fetchPortfolioParties(),
   ]);
   const history = priceRowsByAsset(priceRows);
   const valueDates = dates || [...new Set(priceRows
     .map(r => r.date)
     .filter(date => date >= startDate && date <= endDate))]
     .filter(date => !weeklyOnly || new Date(`${date}T00:00:00Z`).getUTCDay() === 1);
-  return valueDates.map(date => calculatePortfolioValue(date, txRows.map(rowToTx), history));
+  return valueDates.map(date => calculatePortfolioValue(date, txRows.map(rowToTx), history, parties));
 }
 
 async function backfillPortfolioValues({ startDate = '2025-01-01', endDate = todayIso(), weeklyOnly = false } = {}) {

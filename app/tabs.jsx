@@ -2,7 +2,10 @@
 
 // ===== Transactions Tab =====
 function TransactionsTab({ state, setState, spots }) {
-  const allParties = React.useMemo(() => [...PARTIES, ...(state.customParties || [])], [state.customParties]);
+  const allParties = React.useMemo(
+    () => (state.parties && state.parties.length) ? state.parties : PARTIES,
+    [state.parties]
+  );
   const [filterParty, setFilterParty] = React.useState('all');
   const [filterType, setFilterType] = React.useState('all');
   const [expandedId, setExpandedId] = React.useState(null);

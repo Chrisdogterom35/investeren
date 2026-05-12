@@ -42,11 +42,14 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
        state.goldHistory, state.silverHistory,
        state.btcHistory, state.ethHistory, state.paxgHistory]);
 
-  // Merge built-in + custom parties
+  // state.parties = dé bron van waarheid (gesynchroniseerd via Supabase)
   const allParties = React.useMemo(
-    () => [...PARTIES, ...(state.customParties || [])],
-    [state.customParties]
+    () => (state.parties && state.parties.length) ? state.parties : PARTIES,
+    [state.parties]
   );
+
+  // Set van seed-IDs om "custom" (toegevoegd door gebruiker) te detecteren
+  const SEED_PARTY_IDS = React.useMemo(() => new Set(PARTIES.map(p => p.id)), []);
 
   const summaries = React.useMemo(
     () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
@@ -151,16 +154,17 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
   const saveCustomParty = React.useCallback(p => {
     setState(s => {
-      const exists = (s.customParties || []).some(x => x.id === p.id);
-      return { ...s, customParties: exists
-        ? (s.customParties || []).map(x => x.id === p.id ? p : x)
-        : [...(s.customParties || []), p] };
+      const list = (s.parties && s.parties.length) ? s.parties : [...PARTIES];
+      const exists = list.some(x => x.id === p.id);
+      return { ...s, parties: exists
+        ? list.map(x => x.id === p.id ? { ...x, ...p } : x)
+        : [...list, p] };
     });
   }, [setState]);
 
   const deleteCustomParty = React.useCallback(id => {
     if (!confirm('Partij verwijderen? Bijbehorende transacties blijven bestaan.')) return;
-    setState(s => ({ ...s, customParties: (s.customParties || []).filter(p => p.id !== id) }));
+    setState(s => ({ ...s, parties: (s.parties || []).filter(p => p.id !== id) }));
   }, [setState]);
 
   // Render a widget by id
@@ -299,7 +303,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
                     onMetricChange={m => setTileMetric(s.party.id, m)}
                     onClick={() => setDetailPartyId(s.party.id)}
                     onQuickAdd={() => openAdd({ party: s.party.id })}
-                    isCustom={!!(state.customParties||[]).find(p => p.id === s.party.id)}
+                    isCustom={!SEED_PARTY_IDS.has(s.party.id)}
                     onEditParty={() => { setEditParty(s.party); setAddPartyOpen(true); }}
                     onDeleteParty={() => deleteCustomParty(s.party.id)}
                   />

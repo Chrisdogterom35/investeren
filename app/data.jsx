@@ -129,18 +129,31 @@ function loadState() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (!parsed.widgets)       parsed.widgets       = DEFAULT_WIDGETS.map(w => ({ ...w }));
-      if (!parsed.customParties) parsed.customParties = [];
       if (!parsed.hiddenParties) parsed.hiddenParties = [];
       if (!parsed.tileMetrics)   parsed.tileMetrics   = {};
       if (!parsed.transactions)  parsed.transactions  = [];
-      // Migration: Meesman NAV verhuisd van tweaks naar state
+      // Migratie: oude customParties + hardcoded PARTIES → één state.parties array
+      if (!parsed.parties || !parsed.parties.length) {
+        const ids = new Set();
+        const merged = [];
+        for (const p of [...PARTIES, ...(parsed.customParties || [])]) {
+          if (!ids.has(p.id)) { ids.add(p.id); merged.push(p); }
+        }
+        parsed.parties = merged;
+      }
+      // Bewaar customParties NIET meer; alleen state.parties telt vanaf nu
+      delete parsed.customParties;
+      // Migratie: tweaks (spot prices, theme, API keys) verhuizen naar state.tweaks
+      if (!parsed.tweaks) {
+        parsed.tweaks = { ...(window.TWEAKS || {}) };
+      }
+      // Migratie: Meesman NAV
       if (parsed.meesmanNavEur == null) {
-        parsed.meesmanNavEur = (window.TWEAKS && window.TWEAKS.meesmanNavEur) || 100.4;
+        parsed.meesmanNavEur = parsed.tweaks?.meesmanNavEur || DEFAULT_MEESMAN_NAV_EUR;
       }
       if (!parsed.meesmanNavHistory || !parsed.meesmanNavHistory.length) {
-        const twHist = window.TWEAKS && window.TWEAKS.meesmanNavHistory;
-        parsed.meesmanNavHistory = (twHist && twHist.length) ? twHist
-          : MEESMAN_NAV_SEED_HISTORY;
+        const twHist = parsed.tweaks?.meesmanNavHistory;
+        parsed.meesmanNavHistory = (twHist && twHist.length) ? twHist : MEESMAN_NAV_SEED_HISTORY;
       }
       const normalizedMeesman = normalizeMeesmanHistory(parsed.meesmanNavHistory);
       parsed.meesmanNavHistory = normalizedMeesman.history;
@@ -148,12 +161,14 @@ function loadState() {
       return parsed;
     }
   } catch (e) {}
+  // Eerste keer: alle defaults uit code (zal direct naar Supabase gesyncd worden)
   return {
-    transactions: [],
+    transactions:       [],
     widgets:            DEFAULT_WIDGETS.map(w => ({ ...w })),
-    customParties:      [],
+    parties:            [...PARTIES],
     hiddenParties:      [],
     tileMetrics:        {},
+    tweaks:             { ...(window.TWEAKS || {}) },
     meesmanNavEur:      DEFAULT_MEESMAN_NAV_EUR,
     meesmanNavHistory:  MEESMAN_NAV_SEED_HISTORY,
   };
@@ -261,21 +276,36 @@ function summarizeParty(party, transactions, spots) {
       case 'cashback': {
         const qty = +t.quantity || 0;
         const px  = +t.unitPriceEur || 0;
-        if (party.isMixed) {
+        if (party.unit === 'bundle') {
+          const amount = (+t.amountEur || 0) || qty * px;
+          quantity += amount;
+          costBasis += amount;
+          if (t.type === 'cashback') totalCashback += amount;
+        } else if (party.isMixed) {
           const mt = t.metalType || 'goud';
           if (mt === 'goud') goldQty += goldToGram(qty, t.goldUnit);
           else silverQty += silverToOz(qty, t.silverUnit);
+          costBasis += qty * px;
         } else {
           quantity += qty;
+          costBasis += qty * px;
+          if (t.type === 'cashback') totalCashback += qty * px;
         }
-        costBasis += qty * px;
-        if (t.type === 'cashback') totalCashback += qty * px;
         break;
       }
       case 'verkoop': {
         const qty = +t.quantity || 0;
         const proceeds = (+t.amountEur || 0) || qty * (+t.unitPriceEur || 0);
         const fee = +t.feeEur || 0;
+        if (party.unit === 'bundle') {
+          const soldCost = quantity > 0 ? Math.min(costBasis, costBasis * (proceeds / quantity)) : 0;
+          realizedCostBasis += soldCost;
+          realizedProceeds += proceeds;
+          realizedPnl += proceeds - soldCost - fee;
+          costBasis = Math.max(0, costBasis - soldCost);
+          quantity = Math.max(0, quantity - proceeds);
+          break;
+        }
         const totalQty = party.isMixed ? (goldQty + silverQty) : quantity;
         const avgPx = totalQty > 0 ? costBasis / totalQty : 0;
         const saleQty = party.isMixed
@@ -441,15 +471,22 @@ function buildPartyTimeSeries(transactions, parties, spots) {
           }
           break;
         case 'koop': case 'cashback':
-          if (p.isMixed) {
+          if (p.unit === 'bundle') {
+            const amount = (+t.amountEur || 0) || (+t.quantity || 0) * (+t.unitPriceEur || 0);
+            s.qty += amount;
+            s.cost += amount;
+            if (s.lastTotal != null) s.lastTotal += amount;
+          } else if (p.isMixed) {
             const mt = t.metalType || 'goud';
             if (mt === 'goud') s.goldQty += goldToGram(+t.quantity||0, t.goldUnit);
             else s.silverQty += silverToOz(+t.quantity||0, t.silverUnit);
+            s.cost += (+t.quantity||0) * (+t.unitPriceEur||0);
+            if (s.lastTotal != null) s.lastTotal += (+t.quantity||0) * (+t.unitPriceEur||0);
           } else {
             s.qty += +t.quantity||0;
+            s.cost += (+t.quantity||0) * (+t.unitPriceEur||0);
+            if (s.lastTotal != null) s.lastTotal += (+t.quantity||0) * (+t.unitPriceEur||0);
           }
-          s.cost += (+t.quantity||0) * (+t.unitPriceEur||0);
-          if (s.lastTotal != null) s.lastTotal += (+t.quantity||0) * (+t.unitPriceEur||0);
           break;
         case 'dividend': {
           // Herbelegging: participaties worden gratis bijgeschreven, GEEN cost toevoeging
@@ -467,6 +504,13 @@ function buildPartyTimeSeries(transactions, parties, spots) {
         }
         case 'verkoop': {
           const qty = +t.quantity||0;
+          if (p.unit === 'bundle') {
+            const proceeds = (+t.amountEur || 0) || qty * (+t.unitPriceEur || 0);
+            if (s.qty > 0) s.cost = Math.max(0, s.cost - (s.cost * (proceeds / s.qty)));
+            s.qty = Math.max(0, s.qty - proceeds);
+            if (s.lastTotal != null) s.lastTotal = Math.max(0, s.lastTotal - proceeds);
+            break;
+          }
           const totQty = p.isMixed ? s.goldQty + s.silverQty : s.qty;
           const avg = totQty > 0 ? s.cost / totQty : 0;
           const valAvg = s.lastUnitPx ?? (totQty > 0 && s.lastTotal != null ? s.lastTotal / totQty : avg);
