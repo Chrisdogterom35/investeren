@@ -57,6 +57,81 @@ function findPrice(history, asset, date) {
   return result;
 }
 
+function daysBetween(a, b) {
+  const start = new Date(`${a}T00:00:00Z`);
+  const end = new Date(`${b}T00:00:00Z`);
+  return Math.max(0, Math.round((end - start) / 86400000));
+}
+
+function txCashAmount(t) {
+  return (+t.amountEur || 0) || (+t.quantity || 0) * (+t.unitPriceEur || 0);
+}
+
+function bundleSnapshotAtDate(txs, date) {
+  let balance = 0;
+  let cost = 0;
+  let firstActiveDate = null;
+  for (const t of txs) {
+    if (t.date > date) continue;
+    const amount = txCashAmount(t);
+    if (['inleg', 'koop', 'cashback'].includes(t.type)) {
+      balance += amount;
+      cost += amount;
+      if (!firstActiveDate && balance > 0) firstActiveDate = t.date;
+    } else if (['opname', 'verkoop'].includes(t.type)) {
+      const reduction = balance > 0 ? Math.min(cost, cost * (amount / balance)) : 0;
+      cost = Math.max(0, cost - reduction);
+      balance = Math.max(0, balance - amount);
+    } else if (t.type === 'kosten') {
+      cost += +t.amountEur || 0;
+    }
+  }
+  return { balance, cost, firstActiveDate };
+}
+
+function bundleValuations(txs) {
+  let balance = 0;
+  let cost = 0;
+  const valuations = [];
+  for (const t of txs) {
+    const amount = txCashAmount(t);
+    if (['inleg', 'koop', 'cashback'].includes(t.type)) {
+      balance += amount;
+      cost += amount;
+    } else if (['opname', 'verkoop'].includes(t.type)) {
+      const reduction = balance > 0 ? Math.min(cost, cost * (amount / balance)) : 0;
+      cost = Math.max(0, cost - reduction);
+      balance = Math.max(0, balance - amount);
+    } else if (t.type === 'kosten') {
+      cost += +t.amountEur || 0;
+    } else if (t.type === 'waardering') {
+      const value = t.valueEur != null ? +t.valueEur : (t.unitPriceEur != null ? +t.unitPriceEur : null);
+      if (value != null) valuations.push({ date: t.date, value, cost });
+    }
+  }
+  return valuations;
+}
+
+function bundleWeeklyInterpolatedValue(partyTxs, date) {
+  const txs = [...partyTxs].sort((a, b) => a.date.localeCompare(b.date));
+  const current = bundleSnapshotAtDate(txs, date);
+  if (!txs.length || current.balance <= 0 && current.cost <= 0) return 0;
+  const valuations = bundleValuations(txs);
+  const prevVal = valuations.filter(v => v.date <= date).slice(-1)[0] || null;
+  const nextVal = valuations.find(v => v.date > date) || null;
+  if (!nextVal) {
+    if (!prevVal) return current.cost;
+    return Math.max(0, current.cost + (prevVal.value - prevVal.cost));
+  }
+  const startDate = prevVal?.date || current.firstActiveDate || txs[0].date;
+  const startPnl = prevVal ? prevVal.value - prevVal.cost : 0;
+  const endPnl = nextVal.value - nextVal.cost;
+  const totalWeeks = Math.max(1, Math.ceil(daysBetween(startDate, nextVal.date) / 7));
+  const elapsedWeeks = Math.min(totalWeeks, Math.floor(daysBetween(startDate, date) / 7));
+  const fraction = elapsedWeeks / totalWeeks;
+  return Math.max(0, current.cost + startPnl + (endPnl - startPnl) * fraction);
+}
+
 async function fetchSpotPrices() {
   const [goldRes, silverRes, fxRes] = await Promise.all([
     fetchJson('https://api.gold-api.com/price/XAU'),
@@ -337,7 +412,7 @@ function calculatePortfolioValue(date, transactions, history, parties = PARTIES)
       const price = s.lastUnitPx ?? (p.priceAsset ? findPrice(history, p.priceAsset, date) : null);
       value = s.lastTotal ?? ((price || 0) * s.qty);
     } else if (p.unit === 'bundle') {
-      value = s.lastTotal ?? s.lastUnitPx ?? s.cost;
+      value = bundleWeeklyInterpolatedValue(transactions.filter(t => t.party === p.id), date);
     } else if (p.unit === 'eur') {
       value = s.lastTotal ?? s.qty;
     }
