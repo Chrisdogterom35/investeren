@@ -1329,18 +1329,40 @@ function formatMobileHolding(summary) {
   }
   if (p.unit === 'crypto') return fmtQty(summary.quantity || 0, p.unitLabel || p.unit, { decimals: 8 });
   if (p.unit === 'part') return fmtQty(summary.quantity || 0, p.unitLabel || 'part.');
-  if (p.unit === 'bundle' || p.unit === 'eur') return fmtEur(summary.quantity || 0, { decimals: 2 });
+  if (p.unit === 'bundle') return fmtEur(summary.quantity || 0, { decimals: 2 });
+  if (p.unit === 'eur') return fmtEur(summary.currentValueEur || 0, { decimals: 2 });
   return fmtQty(summary.quantity || 0, p.unitLabel || p.unit);
 }
 
+function mobilePartyDisplay(summary, mode) {
+  if (mode === 'holding') return { text: formatMobileHolding(summary), tone: 'muted' };
+  if (mode === 'value') return { text: fmtEur(summary.currentValueEur), tone: 'neutral' };
+  if (mode === 'invested') return { text: fmtEur(summary.invested), tone: 'neutral' };
+  if (mode === 'pnl_eur') {
+    const value = summary.pnl || 0;
+    return { text: `${value >= 0 ? '+' : '−'}${fmtEur(Math.abs(value))}`, tone: value > 0 ? 'positive' : value < 0 ? 'negative' : 'muted' };
+  }
+  if (mode === 'pnl_pct') {
+    const value = summary.pnlPct || 0;
+    return { text: `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`, tone: value > 0 ? 'positive' : value < 0 ? 'negative' : 'muted' };
+  }
+  if (mode === 'yr_pct') {
+    const value = summary.cagr || 0;
+    return { text: `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`, tone: value > 0 ? 'positive' : value < 0 ? 'negative' : 'muted', sub: `CAGR ${summary.years.toFixed(1)}j` };
+  }
+  return { text: fmtEur(summary.currentValueEur), tone: 'neutral' };
+}
+
 function MobilePartijenView({ summaries, onQuickAdd }) {
-  const METRICS = [
-    { key: 'all_pct', label: 'All-time %' },
-    { key: 'all_eur', label: 'All-time €' },
-    { key: 'yr_pct',  label: 'Per jaar %' },
-    { key: 'yr_eur',  label: 'Per jaar €' },
+  const DISPLAY_OPTIONS = [
+    { key: 'holding', label: 'Hoeveelheid' },
+    { key: 'value',   label: 'Waarde' },
+    { key: 'pnl_eur', label: 'Winst €' },
+    { key: 'pnl_pct', label: 'Winst %' },
+    { key: 'invested', label: 'Ingelegd' },
+    { key: 'yr_pct',  label: 'Per jaar' },
   ];
-  const [metric, setMetric] = React.useState('all_pct');
+  const [displayMode, setDisplayMode] = React.useState('holding');
 
   const enriched = summaries
     .filter(s => s.currentValueEur > 0 || s.invested > 0)
@@ -1361,15 +1383,15 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
 
   return (
     <div style={{ padding: '16px 14px 100px' }}>
-      {/* Metric toggle */}
+      {/* Display toggle */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {METRICS.map(m => (
-          <button key={m.key} onClick={() => setMetric(m.key)}
+        {DISPLAY_OPTIONS.map(m => (
+          <button key={m.key} onClick={() => setDisplayMode(m.key)}
             style={{ padding: '6px 12px', fontSize: 12, fontFamily: 'inherit', cursor: 'pointer',
               borderRadius: 999,
-              border: '1px solid ' + (metric === m.key ? 'var(--fg)' : 'var(--border)'),
-              background: metric === m.key ? 'var(--fg)' : 'transparent',
-              color: metric === m.key ? 'var(--bg)' : 'var(--fg-muted)' }}>
+              border: '1px solid ' + (displayMode === m.key ? 'var(--fg)' : 'var(--border)'),
+              background: displayMode === m.key ? 'var(--fg)' : 'transparent',
+              color: displayMode === m.key ? 'var(--bg)' : 'var(--fg-muted)' }}>
             {m.label}
           </button>
         ))}
@@ -1390,6 +1412,9 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
               <div style={{ fontFamily: 'var(--ff-mono)', fontSize: 15, fontWeight: 600 }}>
                 {fmtEur(totalVal)}
               </div>
+              <div style={{ fontSize: 10, color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', marginTop: 2 }}>
+                Gesorteerd op waarde
+              </div>
             </div>
             <div style={{ textAlign: 'right', fontFamily: 'var(--ff-mono)', fontSize: 13,
               color: totalPnl >= 0 ? 'var(--positive)' : 'var(--negative)', fontWeight: 600 }}>
@@ -1403,14 +1428,11 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
       {/* Party list */}
       <div style={{ display: 'grid', gap: 6 }}>
         {enriched.map(s => {
-          const isPct = metric === 'all_pct' || metric === 'yr_pct';
-          const val   = metric === 'all_pct' ? s.pnlPct
-                      : metric === 'all_eur' ? s.pnl
-                      : metric === 'yr_pct'  ? s.cagr
-                      : s.yearlyEur;
-          const displayVal = isPct
-            ? `${val >= 0 ? '+' : ''}${(val || 0).toFixed(1)}%`
-            : `${val >= 0 ? '+' : '−'}${fmtEur(Math.abs(val || 0))}`;
+          const shown = mobilePartyDisplay(s, displayMode);
+          const color = shown.tone === 'positive' ? 'var(--positive)'
+            : shown.tone === 'negative' ? 'var(--negative)'
+            : shown.tone === 'muted' ? 'var(--fg-muted)'
+            : 'var(--fg)';
 
           return (
             <div key={s.party.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
@@ -1421,20 +1443,13 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
                   {s.party.name}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontFamily: 'var(--ff-mono)' }}>
-                  {fmtEur(s.currentValueEur)}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', marginTop: 2,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {formatMobileHolding(s)}
+                  {s.party.category || 'Partij'}
                 </div>
               </div>
               <div style={{ textAlign: 'right', fontFamily: 'var(--ff-mono)', fontSize: 14, fontWeight: 600,
-                color: (val || 0) > 0 ? 'var(--positive)' : (val || 0) < 0 ? 'var(--negative)' : 'var(--fg-muted)',
-                flexShrink: 0 }}>
-                {displayVal}
-                {metric === 'yr_pct' && <div style={{ fontSize: 9, color: 'var(--fg-dim)', fontWeight: 400 }}>
-                  CAGR {s.years.toFixed(1)}j
-                </div>}
+                color, flexShrink: 0, maxWidth: 150 }}>
+                <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{shown.text}</div>
+                {shown.sub && <div style={{ fontSize: 9, color: 'var(--fg-dim)', fontWeight: 400 }}>{shown.sub}</div>}
               </div>
             </div>
           );
