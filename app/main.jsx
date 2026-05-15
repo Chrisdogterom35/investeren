@@ -1322,6 +1322,17 @@ function MeesmanPriceBanner({ state, onUpdate, histStatus, onLoadHistory }) {
   );
 }
 
+function formatMobileHolding(summary) {
+  const p = summary.party;
+  if (p.isMixed) {
+    return `Au ${fmtQty(summary.goldQty || 0, 'g')} · Ag ${fmtQty((summary.silverQty || 0) * OZ_TO_GRAM, 'g')}`;
+  }
+  if (p.unit === 'crypto') return fmtQty(summary.quantity || 0, p.unitLabel || p.unit, { decimals: 8 });
+  if (p.unit === 'part') return fmtQty(summary.quantity || 0, p.unitLabel || 'part.');
+  if (p.unit === 'bundle' || p.unit === 'eur') return fmtEur(summary.quantity || 0, { decimals: 2 });
+  return fmtQty(summary.quantity || 0, p.unitLabel || p.unit);
+}
+
 function MobilePartijenView({ summaries, onQuickAdd }) {
   const METRICS = [
     { key: 'all_pct', label: 'All-time %' },
@@ -1346,12 +1357,7 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
         : 0;
       return { ...s, years, yearlyEur, cagr };
     })
-    .sort((a, b) => {
-      if (metric === 'all_pct') return (b.pnlPct  || 0) - (a.pnlPct  || 0);
-      if (metric === 'all_eur') return (b.pnl      || 0) - (a.pnl      || 0);
-      if (metric === 'yr_pct')  return (b.cagr     || 0) - (a.cagr     || 0);
-      return (b.yearlyEur || 0) - (a.yearlyEur || 0);
-    });
+    .sort((a, b) => (b.currentValueEur || 0) - (a.currentValueEur || 0));
 
   return (
     <div style={{ padding: '16px 14px 100px' }}>
@@ -1416,6 +1422,10 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontFamily: 'var(--ff-mono)' }}>
                   {fmtEur(s.currentValueEur)}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', marginTop: 2,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {formatMobileHolding(s)}
                 </div>
               </div>
               <div style={{ textAlign: 'right', fontFamily: 'var(--ff-mono)', fontSize: 14, fontWeight: 600,

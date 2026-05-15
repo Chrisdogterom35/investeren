@@ -34,7 +34,13 @@ async function fetchJson(url) {
 }
 
 async function fetchText(url) {
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    headers: {
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'accept-language': 'nl-NL,nl;q=0.9,en;q=0.8',
+      'user-agent': 'Mozilla/5.0 (compatible; PortfolioPriceBot/1.0)',
+    },
+  });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
   return res.text();
 }
@@ -160,7 +166,28 @@ async function fetchCryptoPrices() {
   };
 }
 
-async function fetchMeesmanPrice() {
+async function fetchMeesmanPriceFromInvesting() {
+  const html = await fetchText('https://nl.investing.com/funds/nl0013689110');
+  const lastMatch = html.match(/id=["']last_last["'][^>]*>\s*([0-9.,]+)\s*</i);
+  const fallbackMatch = html.match(/placeholder=["']([0-9]{2,3},[0-9]{3})["'][^>]*class=["'][^"']*alertValue/i);
+  const timeMatch = html.match(/pid-\d+-time["'][^>]*>\s*(\d{2})\/(\d{2})\s*</i);
+  const navRaw = lastMatch?.[1] || fallbackMatch?.[1];
+  const day = timeMatch?.[1];
+  const month = timeMatch?.[2];
+  if (!navRaw) throw new Error('Investing.com koers niet gevonden');
+  const nav = +navRaw.replace(/\./g, '').replace(',', '.');
+  const now = new Date();
+  let date = todayIso();
+  if (day && month) {
+    let year = now.getUTCFullYear();
+    const candidate = new Date(Date.UTC(year, +month - 1, +day));
+    if (candidate.getTime() - now.getTime() > 30 * 86400000) year -= 1;
+    date = `${year}-${month}-${day}`;
+  }
+  return { date, nav };
+}
+
+async function fetchMeesmanPriceFromMeesman() {
   const html = await fetchText('https://www.meesman.nl/onze-fondsen/aandelen-wereldwijd-totaal/');
   const match = html.match(/Laatste koers[\s\S]{0,240}?(?:€|&#x20AC;|&euro;)\s*([0-9.,]+)[\s\S]{0,120}?\((\d{2}-\d{2}-\d{4})\)/i);
   if (!match) throw new Error('Meesman koers niet gevonden');
@@ -170,6 +197,16 @@ async function fetchMeesmanPrice() {
     date: `${yyyy}-${mm}-${dd}`,
     nav,
   };
+}
+
+async function fetchMeesmanPrice() {
+  try {
+    return await fetchMeesmanPriceFromInvesting();
+  } catch (investingError) {
+    const fallback = await fetchMeesmanPriceFromMeesman();
+    fallback.warning = `Investing.com fallback: ${investingError.message}`;
+    return fallback;
+  }
 }
 
 async function upsertRows(rows) {
@@ -489,7 +526,7 @@ module.exports = async function handler(req, res) {
         asset: 'meesman_aandelen_wereldwijd_totaal',
         date: meesman.value.date,
         nav: +meesman.value.nav.toFixed(8),
-        source: 'meesman.nl',
+        source: meesman.value.warning ? `meesman.nl (${meesman.value.warning})` : 'investing.com',
         updated_at: now,
       });
     }

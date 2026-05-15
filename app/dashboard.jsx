@@ -19,6 +19,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
   const [editMode, setEditMode]                 = React.useState(false);
   const [addPartyOpen, setAddPartyOpen]         = React.useState(false);
   const [editParty, setEditParty]               = React.useState(null);
+  const [allocationMode, setAllocationMode]     = React.useState('parties');
 
   const spots = React.useMemo(() => ({
     goldSpotEurPerGram:    tweaks.goldSpotEurPerGram,
@@ -148,9 +149,35 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
   const activeWidgets = widgets.filter(w => w.enabled);
 
-  const donutItems = summaries
-    .filter(s => s.currentValueEur > 0)
-    .map(s => ({ label: s.party.name, value: s.currentValueEur, color: s.party.color }));
+  const allocationItems = React.useMemo(() => {
+    const groupMeta = {
+      aandelen:    { label: 'Aandelen',    color: 'oklch(58% 0.14 255)' },
+      crypto:      { label: 'Crypto',      color: 'oklch(62% 0.15 195)' },
+      commodities: { label: 'Commodities', color: 'oklch(76% 0.14 85)' },
+      cash:        { label: 'Cash',        color: 'oklch(55% 0.05 160)' },
+    };
+    const groupForParty = p => {
+      if (p.id === 'cash' || p.category === 'Liquide') return 'cash';
+      if (p.category === 'Crypto') return 'crypto';
+      if (p.category === 'Edelmetaal' || ['goldrepublic', 'goud', 'zilver'].includes(p.id)) return 'commodities';
+      return 'aandelen';
+    };
+    if (allocationMode === 'groups') {
+      const grouped = {};
+      summaries.forEach(s => {
+        if (s.currentValueEur <= 0) return;
+        const key = groupForParty(s.party);
+        grouped[key] = (grouped[key] || 0) + s.currentValueEur;
+      });
+      return Object.entries(grouped)
+        .map(([key, value]) => ({ label: groupMeta[key].label, value, color: groupMeta[key].color }))
+        .sort((a, b) => b.value - a.value);
+    }
+    return summaries
+      .filter(s => s.currentValueEur > 0)
+      .map(s => ({ label: s.party.name, value: s.currentValueEur, color: s.party.color }))
+      .sort((a, b) => b.value - a.value);
+  }, [summaries, allocationMode]);
 
   const saveCustomParty = React.useCallback(p => {
     setState(s => {
@@ -209,10 +236,24 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       case 'allocation':
         return (
           <Card style={{ padding:22 }}>
-            {header('Verdeling', 'Aandeel per partij')}
+            {header('Verdeling', allocationMode === 'groups' ? 'Aandeel per allocatie' : 'Aandeel per partij')}
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:12 }}>
+              {[
+                { key:'parties', label:'Partijen' },
+                { key:'groups',  label:'Allocatie' },
+              ].map(opt => (
+                <button key={opt.key} onClick={() => setAllocationMode(opt.key)}
+                  style={{ padding:'4px 10px', fontSize:11, fontFamily:'inherit', cursor:'pointer', borderRadius:999,
+                    background: allocationMode === opt.key ? 'var(--fg)' : 'transparent',
+                    color: allocationMode === opt.key ? 'var(--bg)' : 'var(--fg-muted)',
+                    border:'1px solid ' + (allocationMode === opt.key ? 'var(--fg)' : 'var(--border)') }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
             {ct === 'balk'
-              ? <AllocationBarChart items={donutItems} />
-              : <DonutChart items={donutItems} size={180} thickness={30} />}
+              ? <AllocationBarChart items={allocationItems} />
+              : <DonutChart items={allocationItems} size={180} thickness={30} />}
           </Card>
         );
       case 'party_comparison':
