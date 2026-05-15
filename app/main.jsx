@@ -1335,22 +1335,22 @@ function formatMobileHolding(summary) {
 }
 
 function mobilePartyDisplay(summary, mode) {
-  if (mode === 'holding') return { text: formatMobileHolding(summary), tone: 'muted' };
-  if (mode === 'value') return { text: fmtEur(summary.currentValueEur), tone: 'neutral' };
-  if (mode === 'invested') return { text: fmtEur(summary.invested), tone: 'neutral' };
+  if (mode === 'holding') return { text: formatMobileHolding(summary), tone: 'muted', label: 'Hoeveelheid' };
+  if (mode === 'value') return { text: fmtEur(summary.currentValueEur), tone: 'neutral', label: 'Waarde' };
+  if (mode === 'invested') return { text: fmtEur(summary.invested), tone: 'neutral', label: 'Ingelegd' };
   if (mode === 'pnl_eur') {
     const value = summary.pnl || 0;
-    return { text: `${value >= 0 ? '+' : '−'}${fmtEur(Math.abs(value))}`, tone: value > 0 ? 'positive' : value < 0 ? 'negative' : 'muted' };
+    return { text: `${value >= 0 ? '+' : '−'}${fmtEur(Math.abs(value))}`, tone: value > 0 ? 'positive' : value < 0 ? 'negative' : 'muted', label: 'Winst' };
   }
   if (mode === 'pnl_pct') {
     const value = summary.pnlPct || 0;
-    return { text: `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`, tone: value > 0 ? 'positive' : value < 0 ? 'negative' : 'muted' };
+    return { text: `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`, tone: value > 0 ? 'positive' : value < 0 ? 'negative' : 'muted', label: 'Winst' };
   }
   if (mode === 'yr_pct') {
     const value = summary.cagr || 0;
-    return { text: `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`, tone: value > 0 ? 'positive' : value < 0 ? 'negative' : 'muted', sub: `CAGR ${summary.years.toFixed(1)}j` };
+    return { text: `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`, tone: value > 0 ? 'positive' : value < 0 ? 'negative' : 'muted', label: 'Per jaar', sub: `CAGR ${summary.years.toFixed(1)}j` };
   }
-  return { text: fmtEur(summary.currentValueEur), tone: 'neutral' };
+  return { text: fmtEur(summary.currentValueEur), tone: 'neutral', label: 'Waarde' };
 }
 
 function MobilePartijenView({ summaries, onQuickAdd }) {
@@ -1404,9 +1404,10 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
         const totalInv  = enriched.reduce((s, x) => s + x.invested, 0);
         const totalPct  = totalInv > 0 ? (totalPnl / totalInv) * 100 : 0;
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-            background: 'var(--surface)', borderRadius: 'var(--radius)', marginBottom: 10,
-            border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px',
+            background: 'linear-gradient(180deg, var(--surface), var(--surface-2))',
+            borderRadius: 'var(--radius-lg)', marginBottom: 10,
+            border: '1px solid var(--border)', boxShadow: '0 8px 20px rgba(0,0,0,0.05)' }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--ff-mono)' }}>Totaal</div>
               <div style={{ fontFamily: 'var(--ff-mono)', fontSize: 15, fontWeight: 600 }}>
@@ -1426,7 +1427,7 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
       })()}
 
       {/* Party list */}
-      <div style={{ display: 'grid', gap: 6 }}>
+      <div style={{ display: 'grid', gap: 8 }}>
         {enriched.map(s => {
           const shown = mobilePartyDisplay(s, displayMode);
           const color = shown.tone === 'positive' ? 'var(--positive)'
@@ -1435,19 +1436,33 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
             : 'var(--fg)';
 
           return (
-            <div key={s.party.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
-              padding: '11px 12px', background: 'var(--surface)', borderRadius: 'var(--radius)' }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: s.party.color, flexShrink: 0 }} />
+            <div key={s.party.id} style={{ display: 'flex', alignItems: 'center', gap: 11,
+              padding: '12px 13px', background: 'var(--surface)', borderRadius: 'var(--radius-lg)',
+              border: '1px solid var(--border)', boxShadow: '0 6px 16px rgba(0,0,0,0.04)' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: s.party.color,
+                flexShrink: 0, display:'grid', placeItems:'center', boxShadow:'inset 0 0 0 1px rgba(255,255,255,0.35)' }}>
+                <span style={{ width: 8, height: 8, borderRadius:'50%', background:'#fff', opacity:0.85 }} />
+              </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {s.party.name}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontFamily: 'var(--ff-mono)' }}>
-                  {s.party.category || 'Partij'}
+                <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:3, minWidth:0 }}>
+                  <span style={{ fontSize: 10, color: 'var(--fg-muted)', fontFamily: 'var(--ff-mono)',
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    {s.party.category || 'Partij'}
+                  </span>
+                  <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--fg-dim)', flexShrink:0 }} />
+                  <span style={{ fontSize: 10, color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)' }}>
+                    {fmtEur(s.currentValueEur, { decimals: 0 })}
+                  </span>
                 </div>
               </div>
-              <div style={{ textAlign: 'right', fontFamily: 'var(--ff-mono)', fontSize: 14, fontWeight: 600,
-                color, flexShrink: 0, maxWidth: 150 }}>
+              <div style={{ textAlign: 'right', fontFamily: 'var(--ff-mono)', fontSize: 14, fontWeight: 650,
+                color, flexShrink: 0, maxWidth: 155 }}>
+                <div style={{ fontSize: 9, color:'var(--fg-dim)', fontWeight: 500, marginBottom: 2 }}>
+                  {shown.label}
+                </div>
                 <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{shown.text}</div>
                 {shown.sub && <div style={{ fontSize: 9, color: 'var(--fg-dim)', fontWeight: 400 }}>{shown.sub}</div>}
               </div>
