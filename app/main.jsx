@@ -446,7 +446,7 @@ function App() {
             const meesman = normalizeMeesmanHistory(
               mergePriceHistory(s.meesmanNavHistory, remote.meesmanNavHistory)
             );
-            const mergedTxs = mergeById(s.transactions, remote.transactions)
+            const remoteTxs = (remote.transactions || [])
               .sort((a, b) => a.date.localeCompare(b.date));
 
             // Merge parties op ID — zelfde principe
@@ -458,7 +458,7 @@ function App() {
             return {
               ...s,
               ...remote,
-              transactions:      mergedTxs,
+              transactions:      remoteTxs,
               parties:           mergedParties.length ? mergedParties : (s.parties || []),
               tweaks:            mergedTweaks,
               meesmanNavEur:     meesman.currentNav,
