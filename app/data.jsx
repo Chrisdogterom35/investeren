@@ -20,7 +20,7 @@ const PARTIES = [
   { id: 'meesman',      name: 'Meesman',       category: 'Indexfondsen', subtitle: 'Wereldwijd aandelenfonds', color: 'oklch(58% 0.14 255)', unit: 'part',  unitLabel: 'part.', goal: 25000 },
   { id: 'finst-btc',   name: 'Bitcoin',        category: 'Crypto',   subtitle: 'BTC via Finst',           color: 'oklch(72% 0.18 55)',  unit: 'crypto', unitLabel: 'BTC',   goal: 5000, spotKey: 'btcSpotEur'  },
   { id: 'finst-eth',   name: 'Ethereum',       category: 'Crypto',   subtitle: 'ETH via Finst',           color: 'oklch(60% 0.12 265)', unit: 'crypto', unitLabel: 'ETH',   goal: 2500, spotKey: 'ethSpotEur'  },
-  { id: 'finst-paxg',  name: 'Pax Gold',       category: 'Crypto',   subtitle: 'PAXG via Finst',          color: 'oklch(76% 0.14 85)',  unit: 'crypto', unitLabel: 'PAXG',  goal: 1500, spotKey: 'paxgSpotEur' },
+  { id: 'finst-paxg',  name: 'Pax Gold',       category: 'Edelmetaal', subtitle: 'PAXG via Finst',         color: 'oklch(76% 0.14 85)',  unit: 'crypto', unitLabel: 'PAXG',  goal: 1500, spotKey: 'paxgSpotEur' },
   { id: 'finst-top25', name: 'Top 25 Bundel',  category: 'Crypto',   subtitle: 'Top 25 tokens via Finst', color: 'oklch(62% 0.15 195)', unit: 'bundle', unitLabel: '€',     goal: 1000 },
   { id: 'goldrepublic', name: 'Goldrepublic',  category: 'Edelmetaal',   subtitle: 'Goud & zilver in kluis',   color: 'oklch(78% 0.14 85)',  unit: 'mixed', unitLabel: 'g/oz',  goal: 5000, isMixed: true },
   { id: 'trading212',   name: 'Trading 212',   category: 'Broker',       subtitle: "Aandelen & ETF's",         color: 'oklch(55% 0.16 145)', unit: 'bundle',unitLabel: '€',     goal: 5000 },

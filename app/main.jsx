@@ -122,6 +122,14 @@ function mergeById(local = [], remote = []) {
   return [...m.values()];
 }
 
+function normalizeParties(parties = []) {
+  return (parties || []).map(p => (
+    p?.id === 'finst-paxg' && p.category === 'Crypto'
+      ? { ...p, category: 'Edelmetaal' }
+      : p
+  ));
+}
+
 function priceRowsToState(rows = []) {
   const byAsset = rows.reduce((acc, row) => {
     if (!row?.asset || !row.date || row.nav == null) return acc;
@@ -478,7 +486,7 @@ function App() {
               .sort((a, b) => a.date.localeCompare(b.date));
 
             // Merge parties op ID — zelfde principe
-            const mergedParties = mergeById(s.parties, remote.parties);
+            const mergedParties = normalizeParties(mergeById(s.parties, remote.parties));
 
             // Merge tweaks (object): remote wint per key, maar lokaal blijft als remote geen waarde heeft
             const mergedTweaks = { ...(s.tweaks || {}), ...(remote.tweaks || {}) };
@@ -487,7 +495,7 @@ function App() {
               ...s,
               ...remote,
               transactions:      remoteTxs,
-              parties:           mergedParties.length ? mergedParties : (s.parties || []),
+              parties:           mergedParties.length ? mergedParties : normalizeParties(s.parties || []),
               tweaks:            mergedTweaks,
               meesmanNavEur:     meesman.currentNav,
               meesmanNavHistory: meesman.history,

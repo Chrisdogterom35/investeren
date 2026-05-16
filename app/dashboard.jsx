@@ -1017,13 +1017,11 @@ function PartyCard({ summary, total, spots, onClick, onQuickAdd, metric = 'pnl_e
         </div>
         <div style={{ display:'flex', gap:4, alignItems:'center' }}>
           <Pill tone="neutral">{p.category}</Pill>
+          <button onClick={e => { e.stopPropagation(); onEditParty && onEditParty(); }}
+            title="Bewerken" style={{ background:'transparent', border:'none', color:'var(--fg-muted)', cursor:'pointer', fontSize:11, padding:'2px 4px' }}>✎</button>
           {isCustom && (
-            <>
-              <button onClick={e => { e.stopPropagation(); onEditParty && onEditParty(); }}
-                title="Bewerken" style={{ background:'transparent', border:'none', color:'var(--fg-muted)', cursor:'pointer', fontSize:11, padding:'2px 4px' }}>✎</button>
-              <button onClick={e => { e.stopPropagation(); onDeleteParty && onDeleteParty(); }}
-                title="Verwijderen" style={{ background:'transparent', border:'none', color:'var(--fg-dim)', cursor:'pointer', fontSize:13, padding:'2px 4px' }}>×</button>
-            </>
+            <button onClick={e => { e.stopPropagation(); onDeleteParty && onDeleteParty(); }}
+              title="Verwijderen" style={{ background:'transparent', border:'none', color:'var(--fg-dim)', cursor:'pointer', fontSize:13, padding:'2px 4px' }}>×</button>
           )}
         </div>
       </div>
