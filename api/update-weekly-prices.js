@@ -310,6 +310,10 @@ function rowToTx(r) {
   };
 }
 
+function isIgnoredLegacyTransaction(tx) {
+  return tx?.party === 'finst-btc' && String(tx.id || '').startsWith('tx_finst_btc_');
+}
+
 function priceRowsByAsset(rows) {
   return rows.reduce((acc, row) => {
     if (!acc[row.asset]) acc[row.asset] = [];
@@ -476,12 +480,13 @@ async function buildPortfolioValueRows({ dates, startDate = '2025-01-01', endDat
     supabaseFetchAll(`asset_price_history?select=asset,date,nav&date=lte.${endDate}&order=date.asc`),
     fetchPortfolioParties(),
   ]);
+  const transactions = txRows.map(rowToTx).filter(tx => !isIgnoredLegacyTransaction(tx));
   const history = priceRowsByAsset(priceRows);
   const valueDates = dates || [...new Set(priceRows
     .map(r => r.date)
     .filter(date => date >= startDate && date <= endDate))]
     .filter(date => !weeklyOnly || new Date(`${date}T00:00:00Z`).getUTCDay() === 1);
-  return valueDates.map(date => calculatePortfolioValue(date, txRows.map(rowToTx), history, parties));
+  return valueDates.map(date => calculatePortfolioValue(date, transactions, history, parties));
 }
 
 async function backfillPortfolioValues({ startDate = '2025-01-01', endDate = todayIso(), weeklyOnly = false } = {}) {

@@ -89,6 +89,10 @@ function rowToTx(r) {
   return t;
 }
 
+function isIgnoredLegacyTransaction(tx) {
+  return tx?.party === 'finst-btc' && String(tx.id || '').startsWith('tx_finst_btc_');
+}
+
 function mergeById(local = [], remote = []) {
   const m = new Map();
   (local || []).forEach(item => item?.id && m.set(item.id, item));
@@ -143,8 +147,8 @@ async function supabaseLoadAll(client) {
 
   const transactionsLoaded = !txRes.error;
   const transactions = transactionsLoaded
-    ? (txRes.data || []).map(rowToTx)
-    : (_legacyTransactions || []);
+    ? (txRes.data || []).map(rowToTx).filter(tx => !isIgnoredLegacyTransaction(tx))
+    : (_legacyTransactions || []).filter(tx => !isIgnoredLegacyTransaction(tx));
 
   const priceState = priceRes.error ? {} : priceRowsToState(priceRes.data || []);
   const portfolioDailyValues = valueRes.error ? [] : (valueRes.data || []).map(row => ({
@@ -184,7 +188,9 @@ async function supabaseSaveSettings(client, state) {
 
 async function supabaseSyncTransactions(client, transactions = []) {
   if (!transactions.length) return;
-  const rows = transactions.filter(t => t.id && t.party && t.type && t.date).map(txToRow);
+  const rows = transactions
+    .filter(t => t.id && t.party && t.type && t.date && !isIgnoredLegacyTransaction(t))
+    .map(txToRow);
   for (let i = 0; i < rows.length; i += 200) {
     const { error } = await client
       .from('transactions')
