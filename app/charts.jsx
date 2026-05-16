@@ -376,12 +376,16 @@ function MonthlyBars({ months, height = 180 }) {
     ro.observe(ref.current); return () => ro.disconnect();
   }, []);
   if (!months.length || w === 0) return <div ref={ref} style={{ width:'100%', height }} />;
-  const pad = { t:12, r:12, b:30, l:40 };
-  const W = Math.max(200, w), H = height;
+  const narrow = w < 430;
+  const visibleMonths = narrow ? months.slice(-12) : months;
+  const pad = { t:12, r:narrow ? 6 : 12, b:narrow ? 24 : 30, l:narrow ? 34 : 40 };
+  const W = Math.max(220, w), H = height;
   const innerW = W-pad.l-pad.r, innerH = H-pad.t-pad.b;
-  const max = Math.max(1, ...months.map(m => m.inleg + m.koop));
-  const bw = innerW / Math.max(1, months.length);
+  const max = Math.max(1, ...visibleMonths.map(m => m.inleg + m.koop));
+  const bw = innerW / Math.max(1, visibleMonths.length);
   const y = v => pad.t + innerH - (v/max)*innerH;
+  const tickFs = narrow ? 9 : 10;
+  const labelStep = narrow ? 3 : Math.max(1, Math.floor(visibleMonths.length / 6));
 
   return (
     <div ref={ref} style={{ width:'100%', overflow:'hidden' }}>
@@ -391,21 +395,22 @@ function MonthlyBars({ months, height = 180 }) {
           return (
             <g key={i}>
               <line x1={pad.l} x2={W-pad.r} y1={y(v)} y2={y(v)} stroke="var(--border)" strokeDasharray={i===0?'0':'2,3'} />
-              <text x={pad.l-6} y={y(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize="10" fontFamily="var(--ff-mono)">
-                {v>=1000?(v/1000).toFixed(1)+'k':Math.round(v)}
+              <text x={pad.l-5} y={y(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize={tickFs} fontFamily="var(--ff-mono)">
+                {v>=1000?(v/1000).toFixed(v>=10000?0:1)+'k':Math.round(v)}
               </text>
             </g>
           );
         })}
-        {months.map((m, i) => {
+        {visibleMonths.map((m, i) => {
           const cx = pad.l + bw*i + bw/2;
           const total = m.inleg + m.koop;
           return (
             <g key={m.month}>
-              <rect x={cx-Math.min(18,bw/2-2)} y={y(total)} width={Math.min(36,bw-4)} height={Math.max(0,y(0)-y(total))}
+              <rect x={cx-Math.max(1, Math.min(narrow ? 10 : 18, bw/2-2))} y={y(total)}
+                width={Math.max(2, Math.min(narrow ? 20 : 36, bw-4))} height={Math.max(0,y(0)-y(total))}
                 fill="var(--accent)" rx="1" opacity="0.9" />
-              {(i===0||i===months.length-1||i%Math.max(1,Math.floor(months.length/6))===0) && (
-                <text x={cx} y={H-pad.b+16} textAnchor="middle" fill="var(--fg-muted)" fontSize="10" fontFamily="var(--ff-mono)">
+              {(i===0||i===visibleMonths.length-1||i%labelStep===0) && (
+                <text x={cx} y={H-pad.b+(narrow ? 14 : 16)} textAnchor="middle" fill="var(--fg-muted)" fontSize={tickFs} fontFamily="var(--ff-mono)">
                   {fmtMonth(m.month)}
                 </text>
               )}
@@ -571,23 +576,27 @@ function MonthlyLineChart({ months, height = 200 }) {
   const [hoverIdx, setHoverIdx] = React.useState(null);
   if (!months.length || w === 0) return <div ref={ref} style={{ width:'100%', height }} />;
 
-  const pad = { t: 12, r: 12, b: 30, l: 40 };
-  const W = Math.max(320, w), H = height;
+  const narrow = w < 430;
+  const visibleMonths = narrow ? months.slice(-12) : months;
+  const pad = { t: 12, r: narrow ? 6 : 12, b: narrow ? 24 : 30, l: narrow ? 34 : 40 };
+  const W = Math.max(220, w), H = height;
   const innerW = W-pad.l-pad.r, innerH = H-pad.t-pad.b;
-  const vals = months.map(m => m.inleg + m.koop);
+  const vals = visibleMonths.map(m => m.inleg + m.koop);
   const maxV = Math.max(1, ...vals);
-  const x = i => pad.l + (months.length > 1 ? (i / (months.length - 1)) * innerW : 0);
+  const x = i => pad.l + (visibleMonths.length > 1 ? (i / (visibleMonths.length - 1)) * innerW : 0);
   const y = v => pad.t + innerH - (v / maxV) * innerH;
-  const path = months.map((m, i) => `${i === 0 ? 'M' : 'L'}${x(i)} ${y(vals[i])}`).join(' ');
-  const area = path + ` L${x(months.length-1)} ${y(0)} L${x(0)} ${y(0)} Z`;
+  const path = visibleMonths.map((m, i) => `${i === 0 ? 'M' : 'L'}${x(i)} ${y(vals[i])}`).join(' ');
+  const area = path + ` L${x(visibleMonths.length-1)} ${y(0)} L${x(0)} ${y(0)} Z`;
+  const tickFs = narrow ? 9 : 10;
+  const labelStep = narrow ? 3 : Math.max(1, Math.floor(visibleMonths.length / 6));
 
   const onMove = e => {
     if (!ref.current) return;
     const rect = ref.current.querySelector('svg').getBoundingClientRect();
     const ratio = (e.clientX - rect.left - pad.l) / innerW;
-    setHoverIdx(Math.max(0, Math.min(months.length-1, Math.round(ratio*(months.length-1)))));
+    setHoverIdx(Math.max(0, Math.min(visibleMonths.length-1, Math.round(ratio*(visibleMonths.length-1)))));
   };
-  const hover = hoverIdx != null ? months[hoverIdx] : null;
+  const hover = hoverIdx != null ? visibleMonths[hoverIdx] : null;
 
   return (
     <div ref={ref} style={{ width:'100%', position:'relative', overflow:'hidden' }}>
@@ -603,23 +612,23 @@ function MonthlyLineChart({ months, height = 200 }) {
           return (
             <g key={i}>
               <line x1={pad.l} x2={W-pad.r} y1={y(v)} y2={y(v)} stroke="var(--border)" strokeDasharray={i===0?'0':'2,3'} />
-              <text x={pad.l-6} y={y(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize="10" fontFamily="var(--ff-mono)">
-                {v>=1000?(v/1000).toFixed(1)+'k':Math.round(v)}
+              <text x={pad.l-5} y={y(v)+3} textAnchor="end" fill="var(--fg-dim)" fontSize={tickFs} fontFamily="var(--ff-mono)">
+                {v>=1000?(v/1000).toFixed(v>=10000?0:1)+'k':Math.round(v)}
               </text>
             </g>
           );
         })}
-        {months.map((m, i) => {
-          const show = i===0 || i===months.length-1 || i%Math.max(1,Math.floor(months.length/6))===0;
+        {visibleMonths.map((m, i) => {
+          const show = i===0 || i===visibleMonths.length-1 || i%labelStep===0;
           return show ? (
-            <text key={i} x={x(i)} y={H-pad.b+16} textAnchor="middle" fill="var(--fg-muted)" fontSize="10" fontFamily="var(--ff-mono)">
+            <text key={i} x={x(i)} y={H-pad.b+(narrow ? 14 : 16)} textAnchor="middle" fill="var(--fg-muted)" fontSize={tickFs} fontFamily="var(--ff-mono)">
               {fmtMonth(m.month)}
             </text>
           ) : null;
         })}
         <path d={area} fill="url(#inleg-fill)" />
         <path d={path} fill="none" stroke="var(--accent)" strokeWidth="2" />
-        {months.map((m, i) => (
+        {visibleMonths.map((m, i) => (
           <circle key={i} cx={x(i)} cy={y(vals[i])} r={hoverIdx===i?5:3}
             fill={hoverIdx===i?'var(--accent)':'var(--surface)'} stroke="var(--accent)" strokeWidth="1.5" style={{ transition:'r .1s' }} />
         ))}
