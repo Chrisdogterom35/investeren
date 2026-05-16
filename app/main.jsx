@@ -448,6 +448,10 @@ function App() {
   const [isMobile, setIsMobile] = React.useState(() => window.matchMedia('(max-width: 767px)').matches);
   const [mobileTab, setMobileTab] = React.useState('home');
   const [mobileAddTrigger, setMobileAddTrigger] = React.useState(0);
+  const [mobileDetailPartyId, setMobileDetailPartyId] = React.useState(null);
+  const [mobileTxOpen, setMobileTxOpen] = React.useState(false);
+  const [mobileTxPreset, setMobileTxPreset] = React.useState(null);
+  const [mobileEditingTx, setMobileEditingTx] = React.useState(null);
 
   React.useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)');
@@ -799,6 +803,30 @@ function App() {
     () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
     [state.transactions, spots, allParties]
   );
+  const mobileDetailParty = mobileDetailPartyId ? allParties.find(p => p.id === mobileDetailPartyId) : null;
+  const mobileDetailSummary = mobileDetailParty ? summaries.find(s => s.party.id === mobileDetailParty.id) : null;
+  const saveMobileTx = React.useCallback(tx => {
+    setState(s => {
+      const exists = s.transactions.some(t => t.id === tx.id);
+      return { ...s, transactions: exists
+        ? s.transactions.map(t => t.id === tx.id ? tx : t)
+        : [...s.transactions, tx] };
+    });
+  }, []);
+  const deleteMobileTx = React.useCallback(id => {
+    if (!confirm('Transactie verwijderen?')) return;
+    setState(s => ({ ...s, transactions: s.transactions.filter(t => t.id !== id) }));
+  }, []);
+  const openMobileTx = React.useCallback((preset = null) => {
+    setMobileEditingTx(null);
+    setMobileTxPreset(preset);
+    setMobileTxOpen(true);
+  }, []);
+  const editMobileTx = React.useCallback(tx => {
+    setMobileEditingTx(tx);
+    setMobileTxPreset(null);
+    setMobileTxOpen(true);
+  }, []);
 
   const sbOk = !!(supabaseConfig.url && supabaseConfig.anonKey);
 
@@ -891,6 +919,7 @@ function App() {
           )}
           {mobileTab === 'partijen' && (
             <MobilePartijenView summaries={summaries}
+              onOpenParty={partyId => setMobileDetailPartyId(partyId)}
               onQuickAdd={() => { setMobileTab('home'); setMobileAddTrigger(t => t + 1); }}
             />
           )}
@@ -923,6 +952,30 @@ function App() {
           onSettings={() => setTweaksOpen(o => !o)}
           tweaksOpen={tweaksOpen}
         />
+      )}
+
+      {isMobile && (
+        <>
+          <PartyDetail
+            open={!!mobileDetailPartyId}
+            onClose={() => setMobileDetailPartyId(null)}
+            party={mobileDetailParty}
+            summary={mobileDetailSummary}
+            spots={spots}
+            onAddTx={preset => { setMobileDetailPartyId(null); openMobileTx(preset); }}
+            onDeleteTx={deleteMobileTx}
+            onEditTx={tx => { setMobileDetailPartyId(null); editMobileTx(tx); }}
+          />
+          <TransactionModal
+            open={mobileTxOpen}
+            onClose={() => { setMobileTxOpen(false); setMobileEditingTx(null); }}
+            onSave={saveMobileTx}
+            parties={allParties}
+            preset={mobileTxPreset}
+            initial={mobileEditingTx}
+            transactions={state.transactions}
+          />
+        </>
       )}
 
       {tweaksOpen && (
@@ -1389,7 +1442,7 @@ function mobilePartyDisplay(summary, mode) {
   return { text: fmtEur(summary.currentValueEur), tone: 'neutral', label: 'Waarde' };
 }
 
-function MobilePartijenView({ summaries, onQuickAdd }) {
+function MobilePartijenView({ summaries, onOpenParty, onQuickAdd }) {
   const DISPLAY_OPTIONS = [
     { key: 'holding', label: 'Hoeveelheid' },
     { key: 'value',   label: 'Waarde' },
@@ -1472,9 +1525,11 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
             : 'var(--fg)';
 
           return (
-            <div key={s.party.id} style={{ display: 'flex', alignItems: 'center', gap: 11,
+            <button key={s.party.id} onClick={() => onOpenParty && onOpenParty(s.party.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left',
               padding: '12px 13px', background: 'var(--surface)', borderRadius: 'var(--radius-lg)',
-              border: '1px solid var(--border)', boxShadow: '0 6px 16px rgba(0,0,0,0.04)' }}>
+              border: '1px solid var(--border)', boxShadow: '0 6px 16px rgba(0,0,0,0.04)',
+              cursor: 'pointer', fontFamily: 'inherit', color: 'inherit' }}>
               <div style={{ width: 28, height: 28, borderRadius: '50%', background: s.party.color,
                 flexShrink: 0, display:'grid', placeItems:'center', boxShadow:'inset 0 0 0 1px rgba(255,255,255,0.35)' }}>
                 <span style={{ width: 8, height: 8, borderRadius:'50%', background:'#fff', opacity:0.85 }} />
@@ -1502,7 +1557,8 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
                 <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{shown.text}</div>
                 {shown.sub && <div style={{ fontSize: 9, color: 'var(--fg-dim)', fontWeight: 400 }}>{shown.sub}</div>}
               </div>
-            </div>
+              <div aria-hidden="true" style={{ color:'var(--fg-dim)', fontSize:18, lineHeight:1, marginLeft:-3 }}>›</div>
+            </button>
           );
         })}
       </div>

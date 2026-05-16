@@ -338,7 +338,7 @@ function PartyDetail({ open, onClose, party, summary, onAddTx, onDeleteTx, onEdi
   if (!open || !party) return null;
   return (
     <Modal open={open} onClose={onClose} width={740}>
-      <div style={{ padding:'22px 26px 16px', borderBottom:'1px solid var(--border)',
+      <div className="party-detail-header" style={{ padding:'22px 26px 16px', borderBottom:'1px solid var(--border)',
         display:'flex', alignItems:'start', justifyContent:'space-between', gap:18 }}>
         <div>
           <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
@@ -350,14 +350,14 @@ function PartyDetail({ open, onClose, party, summary, onAddTx, onDeleteTx, onEdi
           </div>
           <div style={{ fontSize:13, color:'var(--fg-muted)', marginTop:4 }}>{party.subtitle}</div>
         </div>
-        <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+        <div className="party-detail-actions" style={{ display:'flex', gap:8, flexShrink:0 }}>
           <Button variant="secondary" onClick={() => onAddTx({ party: party.id, type: 'waardering' })}>Waarde updaten</Button>
           <Button variant="primary"   onClick={() => onAddTx({ party: party.id })}>+ Transactie</Button>
         </div>
       </div>
 
       {/* Stats */}
-      <div style={{ padding:22, display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, borderBottom:'1px solid var(--border)' }}>
+      <div className="party-detail-stats" style={{ padding:22, display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, borderBottom:'1px solid var(--border)' }}>
         <Stat label="Huidige waarde" value={fmtEur(summary.currentValueEur)} />
         <Stat label="Ingelegd"       value={fmtEur(summary.invested)} />
         <Stat label="Rendement €"    value={<Delta value={summary.pnl} format="eur" />} />
