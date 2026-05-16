@@ -38,7 +38,7 @@ function TransactionsTab({ state, setState, spots }) {
   const openAdd  = (p = null) => { setEditingTx(null); setPreset(p); setModalOpen(true); };
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 28px 60px' }}>
+    <div className="tx-page" style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 28px 60px' }}>
       {/* Header */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:24, gap:20, flexWrap:'wrap' }}>
         <div>
@@ -76,18 +76,18 @@ function TransactionsTab({ state, setState, spots }) {
       {/* Transaction list */}
       <div style={{ borderTop:'1px solid var(--border)' }}>
         {/* Table header */}
-        <div style={{ display:'grid', gridTemplateColumns:'100px 120px 120px 1fr 110px 110px 110px 80px 70px',
-          padding:'10px 0', fontSize:10, fontWeight:600,
+        <div className="tx-table-head" style={{ display:'grid', gridTemplateColumns:'86px 112px 104px minmax(120px,1fr) 94px 82px 96px 62px 56px',
+          padding:'8px 0', fontSize:9, fontWeight:600,
           color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.06em', fontFamily:'var(--ff-mono)', gap:8 }}>
-          <span>Datum</span>
-          <span>Partij</span>
-          <span>Type</span>
-          <span>Details</span>
-          <span style={{ textAlign:'right' }}>Bedrag</span>
-          <span style={{ textAlign:'right' }}>Kosten</span>
-          <span style={{ textAlign:'right' }}>Totaal</span>
-          <span>Notitie</span>
-          <span></span>
+          <span className="tx-col-date">Datum</span>
+          <span className="tx-col-party">Partij</span>
+          <span className="tx-col-type">Type</span>
+          <span className="tx-col-details">Details</span>
+          <span className="tx-col-amount" style={{ textAlign:'right' }}>Bedrag</span>
+          <span className="tx-col-fee" style={{ textAlign:'right' }}>Kosten</span>
+          <span className="tx-col-total" style={{ textAlign:'right' }}>Totaal</span>
+          <span className="tx-col-note">Notitie</span>
+          <span className="tx-col-actions"></span>
         </div>
 
         {filtered.length === 0 && (
@@ -103,29 +103,29 @@ function TransactionsTab({ state, setState, spots }) {
           return (
             <div key={t.id} style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--border)' }}>
               {/* Main row */}
-              <div onClick={() => setExpandedId(expanded ? null : t.id)}
-                style={{ display:'grid', gridTemplateColumns:'100px 120px 120px 1fr 110px 110px 110px 80px 70px',
-                  padding:'12px 0', gap:8, alignItems:'center', cursor:'pointer',
+              <div className="tx-row" onClick={() => setExpandedId(expanded ? null : t.id)}
+                style={{ display:'grid', gridTemplateColumns:'86px 112px 104px minmax(120px,1fr) 94px 82px 96px 62px 56px',
+                  padding:'8px 0', gap:8, alignItems:'center', cursor:'pointer',
                   background: expanded ? 'var(--surface-2)' : 'transparent',
                   transition:'background .1s' }}>
-                <span style={{ fontFamily:'var(--ff-mono)', fontSize:12, color:'var(--fg-muted)' }}>
+                <span className="tx-col-date" style={{ fontFamily:'var(--ff-mono)', fontSize:11, color:'var(--fg-muted)' }}>
                   {fmtDate(t.date)}
                 </span>
-                <span style={{ display:'flex', alignItems:'center', gap:6, fontSize:12 }}>
+                <span className="tx-col-party" style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, minWidth:0 }}>
                   <span style={dotStyle(p.color, 6)} />
-                  {p.name}
+                  <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.name}</span>
                 </span>
-                <span><Pill tone={txTone(t.type)} style={{ fontSize:10 }}>{TX_LABELS[t.type]||t.type}</Pill></span>
-                <span style={{ fontFamily:'var(--ff-mono)', fontSize:12, color:'var(--fg-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                <span className="tx-col-type"><Pill tone={txTone(t.type)} style={{ fontSize:9, padding:'2px 6px' }}>{TX_LABELS[t.type]||t.type}</Pill></span>
+                <span className="tx-col-details" style={{ fontFamily:'var(--ff-mono)', fontSize:11, color:'var(--fg-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                   {formatTxDetails(t, p)}
                 </span>
-                <span style={{ textAlign:'right', fontFamily:'var(--ff-mono)', fontSize:12 }}>
+                <span className="tx-col-amount" style={{ textAlign:'right', fontFamily:'var(--ff-mono)', fontSize:11 }}>
                   {formatTxAmount(t, p)}
                 </span>
-                <span style={{ textAlign:'right', fontFamily:'var(--ff-mono)', fontSize:11, color: t.feeEur > 0 ? 'var(--negative)' : 'var(--fg-dim)' }}>
+                <span className="tx-col-fee" style={{ textAlign:'right', fontFamily:'var(--ff-mono)', fontSize:10, color: t.feeEur > 0 ? 'var(--negative)' : 'var(--fg-dim)' }}>
                   {t.feeEur > 0 ? `−${fmtEur(t.feeEur,{decimals:2})}` : '—'}
                 </span>
-                <span style={{ textAlign:'right', fontFamily:'var(--ff-mono)', fontSize:12, fontWeight:500 }}>
+                <span className="tx-col-total" style={{ textAlign:'right', fontFamily:'var(--ff-mono)', fontSize:11, fontWeight:600 }}>
                   {(() => {
                     if (t.quantity != null && t.unitPriceEur != null) {
                       const gross = (+t.quantity) * (+t.unitPriceEur);
@@ -140,14 +140,14 @@ function TransactionsTab({ state, setState, spots }) {
                     return <span style={{ color:'var(--fg-dim)' }}>—</span>;
                   })()}
                 </span>
-                <span style={{ fontSize:11, color:'var(--fg-dim)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                <span className="tx-col-note" style={{ fontSize:10, color:'var(--fg-dim)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                   {t.note || ''}
                 </span>
-                <span style={{ display:'flex', justifyContent:'flex-end', gap:2 }}>
+                <span className="tx-col-actions" style={{ display:'flex', justifyContent:'flex-end', gap:0 }}>
                   <button onClick={e => { e.stopPropagation(); openEdit(t); }}
-                    style={{ background:'transparent', border:'none', color:'var(--fg-muted)', cursor:'pointer', fontSize:12, padding:'4px 5px' }}>✎</button>
+                    style={{ background:'transparent', border:'none', color:'var(--fg-muted)', cursor:'pointer', fontSize:12, padding:'3px 4px' }}>✎</button>
                   <button onClick={e => { e.stopPropagation(); deleteTx(t.id); }}
-                    style={{ background:'transparent', border:'none', color:'var(--fg-dim)', cursor:'pointer', fontSize:16, padding:'4px 5px' }}>×</button>
+                    style={{ background:'transparent', border:'none', color:'var(--fg-dim)', cursor:'pointer', fontSize:15, padding:'3px 4px' }}>×</button>
                 </span>
               </div>
 

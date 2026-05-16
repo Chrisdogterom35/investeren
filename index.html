@@ -281,6 +281,27 @@
     .party-detail-actions { width: 100% !important; display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
     .party-detail-actions button { width: 100% !important; justify-content: center !important; }
     .party-detail-stats { grid-template-columns: 1fr 1fr !important; padding: 16px 18px !important; gap: 10px !important; }
+    .tx-page { padding: 18px 14px 96px !important; }
+    .tx-page h1 { font-size: 30px !important; }
+    .tx-table-head { display: none !important; }
+    .tx-row {
+      grid-template-columns: 64px minmax(0, 1fr) 86px 42px !important;
+      grid-template-areas:
+        "date party total actions"
+        "date details total actions" !important;
+      gap: 2px 7px !important;
+      padding: 7px 0 !important;
+      min-height: 42px !important;
+    }
+    .tx-col-date { grid-area: date; font-size: 10px !important; align-self: center; }
+    .tx-col-party { grid-area: party; font-size: 11px !important; }
+    .tx-col-type { display: none !important; }
+    .tx-col-details { grid-area: details; font-size: 10px !important; min-width: 0; }
+    .tx-col-amount { display: none !important; }
+    .tx-col-fee { display: none !important; }
+    .tx-col-total { grid-area: total; font-size: 11px !important; align-self: center; white-space: nowrap; }
+    .tx-col-note { display: none !important; }
+    .tx-col-actions { grid-area: actions; align-self: center; }
   }
   @media (max-width: 420px) {
     .hero-grid { grid-template-columns: 1fr !important; }
@@ -384,7 +405,7 @@
 <script type="text/babel" src="app/charts.jsx?v=20260516b"></script>
 <script type="text/babel" src="app/modals.jsx?v=20260516a"></script>
 <script type="text/babel" src="app/dashboard.jsx?v=20260516d"></script>
-<script type="text/babel" src="app/tabs.jsx?v=20260516a"></script>
+<script type="text/babel" src="app/tabs.jsx?v=20260516b"></script>
 <script type="text/babel" src="app/main.jsx?v=20260516e"></script>
 </body>
 </html>
