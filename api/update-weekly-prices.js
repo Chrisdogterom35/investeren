@@ -331,9 +331,7 @@ function isIgnoredLegacyTransaction(tx) {
 }
 
 function normalizeTransactions(transactions = []) {
-  const hasBtc = transactions.some(t => t?.party === 'finst-btc');
   const cleaned = transactions.filter(tx => !isIgnoredLegacyTransaction(tx));
-  if (!hasBtc) return cleaned;
   return mergeById(cleaned, CANONICAL_BTC_TRANSACTIONS)
     .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
 }

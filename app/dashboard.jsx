@@ -506,7 +506,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
       {/* HERO TOTALS */}
       {isMobile ? (
-        <Card style={{ padding:'16px 15px 14px', marginBottom:10 }}>
+        <section style={{ padding:'4px 2px 12px', marginBottom:10, borderBottom:'1px solid var(--border)' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
             <div style={{ minWidth:0 }}>
               <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.1em', color:'var(--fg-muted)', marginBottom:5, fontFamily:'var(--ff-mono)' }}>
@@ -521,14 +521,14 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
               <div style={{ marginTop:3 }}><Delta value={totalPnlPct} /></div>
             </div>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:7, marginTop:14 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', marginTop:14, borderTop:'1px solid var(--border)' }}>
             {[
               { label:'Ingelegd', value:fmtEur(totalInvested, { decimals:0 }), sub:firstTxDate ? fmtDate(firstTxDate) : '—' },
               { label:'YTD', value:<Delta value={ytd.pnlPct} />, sub:fmtEur(ytd.pnl, { sign:true, decimals:0 }) },
               { label:'Partijen', value:summaries.filter(s=>s.currentValueEur>0).length, sub:`${state.transactions.length} tx` },
-            ].map(item => (
-              <div key={item.label} style={{ minWidth:0, padding:'8px 9px', background:'var(--surface-2)',
-                border:'1px solid var(--border)', borderRadius:'var(--radius)' }}>
+            ].map((item, idx) => (
+              <div key={item.label} style={{ minWidth:0, padding:'9px 8px 0',
+                borderLeft: idx > 0 ? '1px solid var(--border)' : 'none' }}>
                 <div style={{ fontSize:9, color:'var(--fg-dim)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }}>
                   {item.label}
                 </div>
@@ -541,7 +541,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
               </div>
             ))}
           </div>
-        </Card>
+        </section>
       ) : (
         /* ── Desktop hero: 5-column grid ── */
         <Card style={{ padding:28, marginBottom:20 }}>
@@ -662,7 +662,10 @@ function CurrentPricesList({ spots, spotStatus, isMobile }) {
   ];
 
   return (
-    <Card style={{ padding: isMobile ? '10px 11px' : '14px 18px', marginBottom: isMobile ? 10 : 20 }}>
+    <div style={{ padding: isMobile ? '0 2px 10px' : undefined, marginBottom: isMobile ? 10 : 0,
+      borderBottom: isMobile ? '1px solid var(--border)' : undefined }}>
+    <Card style={{ padding: isMobile ? 0 : '14px 18px', marginBottom: isMobile ? 0 : 20,
+      background: isMobile ? 'transparent' : undefined, border: isMobile ? 'none' : undefined, boxShadow: isMobile ? 'none' : undefined }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:12, marginBottom:isMobile ? 8 : 10 }}>
         <div style={{ fontSize:12, fontWeight:600, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.06em' }}>
           Huidige koersen
@@ -681,11 +684,12 @@ function CurrentPricesList({ spots, spotStatus, isMobile }) {
         {prices.map(p => (
           <div key={p.label} style={{
             minWidth:0,
-            flex: isMobile ? '0 0 132px' : undefined,
-            padding: isMobile ? '7px 8px' : '8px 9px',
-            background:'var(--surface-2)',
-            border:'1px solid var(--border)',
-            borderRadius:'var(--radius)',
+            flex: isMobile ? '0 0 118px' : undefined,
+            padding: isMobile ? '2px 10px 2px 0' : '8px 9px',
+            background: isMobile ? 'transparent' : 'var(--surface-2)',
+            border: isMobile ? 'none' : '1px solid var(--border)',
+            borderRight: isMobile ? '1px solid var(--border)' : undefined,
+            borderRadius: isMobile ? 0 : 'var(--radius)',
           }}>
             <div style={{ fontSize:10, color:'var(--fg-dim)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }}>
               {p.label}
@@ -697,6 +701,7 @@ function CurrentPricesList({ spots, spotStatus, isMobile }) {
         ))}
       </div>
     </Card>
+    </div>
   );
 }
 
@@ -718,8 +723,8 @@ function MobilePartyRows({ summaries, total }) {
     });
 
   return (
-    <Card style={{ padding: '12px 14px' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+    <section style={{ padding: '0 2px 4px' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
         <div style={{ fontSize:13, fontWeight:600, letterSpacing:'-0.01em' }}>Partijen</div>
         <div style={{ display:'flex', gap:4 }}>
           {METRICS.map(m => (
@@ -734,7 +739,7 @@ function MobilePartyRows({ summaries, total }) {
           ))}
         </div>
       </div>
-      <div>
+      <div style={{ borderTop:'1px solid var(--border)' }}>
         {rows.map((s, i) => {
           const val   = metric === 'all_pct' ? s.pnlPct : metric === 'all_eur' ? s.pnl : s.currentValueEur;
           const isPct = metric === 'all_pct';
@@ -742,7 +747,7 @@ function MobilePartyRows({ summaries, total }) {
           const share = total > 0 ? (s.currentValueEur / total * 100) : 0;
           return (
             <div key={s.party.id} style={{ display:'flex', alignItems:'center', gap:9,
-              padding:'8px 0', borderBottom: i < rows.length-1 ? '1px solid var(--border)' : 'none' }}>
+              padding:'9px 0', borderBottom: i < rows.length-1 ? '1px solid var(--border)' : 'none' }}>
               <div style={{ width:8, height:8, borderRadius:'50%', background:s.party.color, flexShrink:0 }} />
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
@@ -769,7 +774,7 @@ function MobilePartyRows({ summaries, total }) {
           );
         })}
       </div>
-    </Card>
+    </section>
   );
 }
 
