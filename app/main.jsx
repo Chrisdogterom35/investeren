@@ -1368,7 +1368,7 @@ function MobilePartijenView({ summaries, onQuickAdd }) {
     { key: 'invested', label: 'Ingelegd' },
     { key: 'yr_pct',  label: 'Per jaar' },
   ];
-  const [displayMode, setDisplayMode] = React.useState('holding');
+  const [displayMode, setDisplayMode] = React.useState('pnl_eur');
 
   const enriched = summaries
     .filter(s => s.currentValueEur > 0 || s.invested > 0)
