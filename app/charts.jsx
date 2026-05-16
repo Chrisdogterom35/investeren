@@ -206,7 +206,7 @@ function AllocationLineChart({ timeSeries, parties, height = 240 }) {
 }
 
 // ====== Donut chart ======
-function DonutChart({ items, size = 200, thickness = 34 }) {
+function DonutChart({ items, size = 200, thickness = 34, legendBelow = false, legendColumns = 1 }) {
   const total = items.reduce((s, it) => s + it.value, 0) || 1;
   const r = size / 2, inner = r - thickness;
   let angle = -Math.PI / 2;
@@ -227,8 +227,9 @@ function DonutChart({ items, size = 200, thickness = 34 }) {
   const h = hover != null ? arcs[hover] : null;
 
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:24, flexWrap:'wrap' }}>
-      <svg width={size} height={size} style={{ flexShrink:0 }}>
+    <div style={{ display:'flex', alignItems:'center', justifyContent: legendBelow ? 'center' : 'flex-start',
+      gap: legendBelow ? 14 : 24, flexWrap:'wrap', flexDirection: legendBelow ? 'column' : 'row' }}>
+      <svg width={size} height={size} style={{ flexShrink:0, maxWidth:'100%' }}>
         {arcs.map((a, i) => (
           <path key={i} d={a.d} fill={a.color} stroke="var(--surface)" strokeWidth="2"
             opacity={hover==null||hover===i?1:0.3}
@@ -243,14 +244,17 @@ function DonutChart({ items, size = 200, thickness = 34 }) {
         </text>
         {h && <text x={r} y={r+30} textAnchor="middle" fill="var(--fg-dim)" fontSize="11" fontFamily="var(--ff-mono)">{h.pct.toFixed(1)}%</text>}
       </svg>
-      <div style={{ flex:1, display:'grid', gap:6, minWidth:0 }}>
+      <div style={{ width: legendBelow ? '100%' : undefined, flex: legendBelow ? undefined : 1,
+        display:'grid', gridTemplateColumns: legendBelow ? `repeat(${legendColumns}, minmax(0, 1fr))` : '1fr',
+        gap: legendBelow ? '7px 12px' : 6, minWidth:0 }}>
         {arcs.map((a, i) => (
           <div key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
-            style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, opacity:hover==null||hover===i?1:0.5, transition:'opacity .15s', cursor:'pointer' }}>
+            style={{ display:'grid', gridTemplateColumns: legendBelow ? '10px minmax(0, 1fr) auto' : '10px minmax(0, 1fr) auto auto',
+              alignItems:'center', gap: legendBelow ? 6 : 8, fontSize:12, opacity:hover==null||hover===i?1:0.5, transition:'opacity .15s', cursor:'pointer', minWidth:0 }}>
             <div style={dotStyle(a.color, 10)} />
             <div style={{ flex:1, color:'var(--fg)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.label}</div>
             <div style={{ color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', fontSize:11 }}>{a.pct.toFixed(1)}%</div>
-            <div style={{ color:'var(--fg)', fontFamily:'var(--ff-mono)', fontSize:12, minWidth:72, textAlign:'right' }}>{fmtEur(a.value)}</div>
+            {!legendBelow && <div style={{ color:'var(--fg)', fontFamily:'var(--ff-mono)', fontSize:12, minWidth:72, textAlign:'right' }}>{fmtEur(a.value)}</div>}
           </div>
         ))}
       </div>

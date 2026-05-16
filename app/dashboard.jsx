@@ -223,19 +223,25 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       } />
     );
 
+    const WidgetShell = ({ children, pad = 22 }) => (
+      isMobile
+        ? <section style={{ padding:'0 2px 14px', borderBottom:'1px solid var(--border)' }}>{children}</section>
+        : <Card style={{ padding: pad }}>{children}</Card>
+    );
+
     switch (wCfg.id) {
       case 'portfolio_line':
         return (
-          <Card style={{ padding: isMobile ? '14px 12px' : 22 }}>
+          <WidgetShell>
             {header('Waarde over tijd', ct === 'rendement%' ? 'Rendement % over tijd' : 'Huidige waarde vs. ingelegd')}
             {ct === 'rendement%'
-              ? <ReturnLineChart data={sparse} height={isMobile ? 185 : 230} />
-              : <LineChart data={sparse} height={isMobile ? 185 : 230} />}
-          </Card>
+              ? <ReturnLineChart data={sparse} height={isMobile ? 175 : 230} />
+              : <LineChart data={sparse} height={isMobile ? 175 : 230} />}
+          </WidgetShell>
         );
       case 'allocation':
         return (
-          <Card style={{ padding:22 }}>
+          <WidgetShell>
             {header('Verdeling', allocationMode === 'groups' ? 'Aandeel per allocatie' : 'Aandeel per partij')}
             <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:12 }}>
               {[
@@ -253,38 +259,38 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
             </div>
             {ct === 'balk'
               ? <AllocationBarChart items={allocationItems} />
-              : <DonutChart items={allocationItems} size={180} thickness={30} />}
-          </Card>
+              : <DonutChart items={allocationItems} size={isMobile ? 250 : 180} thickness={isMobile ? 38 : 30} legendBelow={isMobile} legendColumns={isMobile ? 2 : 1} />}
+          </WidgetShell>
         );
       case 'party_comparison':
         return (
-          <Card style={{ padding:22 }}>
+          <WidgetShell>
             {header('Inleg vs. waarde', 'Per partij')}
-            <InvestedVsValueChart summaries={summaries} height={240} />
-          </Card>
+            <InvestedVsValueChart summaries={summaries} height={isMobile ? 210 : 240} />
+          </WidgetShell>
         );
       case 'returns':
         return (
-          <Card style={{ padding:22 }}>
+          <WidgetShell>
             {header('Rendement', ct === 'tabel' ? 'Overzicht per partij' : '% per partij')}
             {ct === 'tabel'
               ? <ReturnTable summaries={summaries} />
               : <div style={{ marginTop:8 }}><ReturnBars summaries={summaries} /></div>}
-          </Card>
+          </WidgetShell>
         );
       case 'monthly_inleg':
         return (
-          <Card style={{ padding:22 }}>
+          <WidgetShell>
             {header('Maandelijkse inleg', 'Incl. koopbedragen')}
             {ct === 'lijn'
-              ? <MonthlyLineChart months={monthly} height={200} />
-              : <MonthlyBars months={monthly} height={200} />}
-          </Card>
+              ? <MonthlyLineChart months={monthly} height={isMobile ? 170 : 200} />
+              : <MonthlyBars months={monthly} height={isMobile ? 170 : 200} />}
+          </WidgetShell>
         );
       case 'allocation_lines': {
         const visibleParties = allParties.filter(p => !hiddenParties.includes(p.id));
         return (
-          <Card style={{ padding:22 }}>
+          <WidgetShell>
             {header('Waarde per allocatie', 'Ontwikkeling per partij')}
             {/* Visibility toggles */}
             <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:10 }}>
@@ -303,8 +309,8 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
                 );
               })}
             </div>
-            <AllocationLineChart timeSeries={allocationTimeSeries} parties={visibleParties} height={260} />
-          </Card>
+            <AllocationLineChart timeSeries={allocationTimeSeries} parties={visibleParties} height={isMobile ? 220 : 260} />
+          </WidgetShell>
         );
       }
       case 'party_grid':
@@ -354,21 +360,21 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
         );
       case 'monthly_table':
         return (
-          <Card style={{ padding:22 }}>
+          <WidgetShell>
             {header('Maandelijks overzicht', 'P&L en cashflow per maand')}
             <MonthlyTable months={monthly} />
-          </Card>
+          </WidgetShell>
         );
       case 'activity_feed':
         return (
-          <Card style={{ padding:22 }}>
+          <WidgetShell>
             {header('Recente activiteit', `${state.transactions.length} transacties totaal`)}
             <ActivityFeed txs={recentTxs} parties={allParties} onClick={tx => setDetailPartyId(tx.party)} />
-          </Card>
+          </WidgetShell>
         );
       case 'fees_summary':
         return (
-          <Card style={{ padding:22 }}>
+          <WidgetShell>
             {header('Transactiekosten', 'Totaal betaald')}
             <div style={{ display:'grid', gap:10, marginTop:8 }}>
               <div style={{ fontFamily:'var(--ff-mono)', fontSize:28, fontWeight:600, color:totalFees>0?'var(--negative)':'var(--fg-dim)' }}>
@@ -383,12 +389,12 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
                 </div>
               )}
             </div>
-          </Card>
+          </WidgetShell>
         );
       case 'metal_holdings': {
         const metalSummaries = summaries.filter(s => s.party.unit==='gram'||s.party.unit==='ounce'||s.party.isMixed);
         return (
-          <Card style={{ padding:22 }}>
+          <WidgetShell>
             {header('Edelmetalen', 'Bezit & waarden')}
             <div style={{ display:'grid', gap:10, marginTop:8 }}>
               {metalSummaries.map(s => (
@@ -406,15 +412,15 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
                 </div>
               ))}
             </div>
-          </Card>
+          </WidgetShell>
         );
       }
       case 'goals':
         return (
-          <Card style={{ padding:22 }}>
+          <WidgetShell>
             {header('Doelen voortgang', 'Per partij')}
             <GoalsProgress summaries={summaries} />
-          </Card>
+          </WidgetShell>
         );
       default: return null;
     }
