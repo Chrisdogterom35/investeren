@@ -310,8 +310,32 @@ function rowToTx(r) {
   };
 }
 
+const CANONICAL_BTC_TRANSACTIONS = [
+  { id: 'btc-2024-02-29-buy-50',       party: 'finst-btc', date: '2024-02-29', type: 'koop',    quantity: 0.00085623, amountEur: 50,     feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2024-03-04-buy-70',       party: 'finst-btc', date: '2024-03-04', type: 'koop',    quantity: 0.00113883, amountEur: 70,     feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2024-03-12-buy-5738',     party: 'finst-btc', date: '2024-03-12', type: 'koop',    quantity: 0.00086852, amountEur: 57.38,  feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2024-03-12-buy-4001',     party: 'finst-btc', date: '2024-03-12', type: 'koop',    quantity: 0.00060528, amountEur: 40.01,  feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2024-04-10-buy-100',      party: 'finst-btc', date: '2024-04-10', type: 'koop',    quantity: 0.00159005, amountEur: 100,    feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2024-04-10-buy-300',      party: 'finst-btc', date: '2024-04-10', type: 'koop',    quantity: 0.00476801, amountEur: 300,    feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2024-04-10-buy-35',       party: 'finst-btc', date: '2024-04-10', type: 'koop',    quantity: 0.00055565, amountEur: 35,     feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2024-04-11-sell-435',     party: 'finst-btc', date: '2024-04-11', type: 'verkoop', quantity: 0.00663876, amountEur: 435,    feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2025-02-05-buy-100',      party: 'finst-btc', date: '2025-02-05', type: 'koop',    quantity: 0.00107528, amountEur: 100,    feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2025-02-25-buy-50',       party: 'finst-btc', date: '2025-02-25', type: 'koop',    quantity: 0.00058139, amountEur: 50,     feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2025-04-06-withdraw-5',   party: 'finst-btc', date: '2025-04-06', type: 'opname',  quantity: 0.0001,     amountEur: 5,      feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2026-02-08-buy-10001',    party: 'finst-btc', date: '2026-02-08', type: 'koop',    quantity: 0.0016594,  amountEur: 100.01, feeEur: 0, note: 'Screenshot Finst BTC' },
+  { id: 'btc-2026-04-13-withdraw-048', party: 'finst-btc', date: '2026-04-13', type: 'opname',  quantity: 0.00005,    amountEur: 0.48,   feeEur: 0, note: 'Screenshot Finst BTC' },
+];
+
 function isIgnoredLegacyTransaction(tx) {
   return tx?.party === 'finst-btc' && String(tx.id || '').startsWith('tx_finst_btc_');
+}
+
+function normalizeTransactions(transactions = []) {
+  const hasBtc = transactions.some(t => t?.party === 'finst-btc');
+  const cleaned = transactions.filter(tx => !isIgnoredLegacyTransaction(tx));
+  if (!hasBtc) return cleaned;
+  return mergeById(cleaned, CANONICAL_BTC_TRANSACTIONS)
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
 }
 
 function priceRowsByAsset(rows) {
@@ -480,7 +504,7 @@ async function buildPortfolioValueRows({ dates, startDate = '2025-01-01', endDat
     supabaseFetchAll(`asset_price_history?select=asset,date,nav&date=lte.${endDate}&order=date.asc`),
     fetchPortfolioParties(),
   ]);
-  const transactions = txRows.map(rowToTx).filter(tx => !isIgnoredLegacyTransaction(tx));
+  const transactions = normalizeTransactions(txRows.map(rowToTx));
   const history = priceRowsByAsset(priceRows);
   const valueDates = dates || [...new Set(priceRows
     .map(r => r.date)
