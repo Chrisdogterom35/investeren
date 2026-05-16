@@ -37,14 +37,6 @@ function TransactionsTab({ state, setState, spots }) {
   const openEdit = tx => { setEditingTx(tx); setPreset(null); setModalOpen(true); };
   const openAdd  = (p = null) => { setEditingTx(null); setPreset(p); setModalOpen(true); };
 
-  const summaries = React.useMemo(
-    () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
-    [state.transactions, spots.goldSpotEurPerGram, spots.silverSpotEurPerOunce, allParties]
-  );
-
-  const totalFees = state.transactions.reduce((s, t) => s + (+t.feeEur || 0), 0);
-  const totalCashback = state.transactions.filter(t => t.type === 'cashback').reduce((s, t) => s + (+t.quantity||0)*(+t.unitPriceEur||0), 0);
-
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 28px 60px' }}>
       {/* Header */}
@@ -58,41 +50,6 @@ function TransactionsTab({ state, setState, spots }) {
           </h1>
         </div>
         <Button variant="primary" onClick={() => openAdd()}>+ Transactie toevoegen</Button>
-      </div>
-
-      {/* Summary pills */}
-      <div style={{ display:'flex', gap:12, marginBottom:20, flexWrap:'wrap' }}>
-        {summaries.filter(s => s.quantity > 0 || s.currentValueEur > 0).map(s => (
-          <div key={s.party.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 14px',
-            background:'var(--surface)', border:'1px solid var(--border)', borderRadius:'var(--radius)', fontSize:12 }}>
-            <div style={dotStyle(s.party.color)} />
-            <span style={{ fontWeight:500 }}>{s.party.name}</span>
-            <span style={{ color:'var(--fg-muted)', fontFamily:'var(--ff-mono)', fontSize:11 }}>
-              {s.party.unit === 'part' ? fmtQty(s.quantity, s.party.unitLabel) :
-               s.party.isMixed ? `${fmtQty(s.goldQty||0,'g')} + ${fmtQty(s.silverQty||0,'oz')}` :
-               s.party.unit === 'crypto' ? fmtQty(s.quantity, s.party.unitLabel || s.party.unit, { decimals: 8 }) :
-               fmtQty(s.quantity, s.party.unit)}
-            </span>
-            <span style={{ color:'var(--fg)', fontFamily:'var(--ff-mono)', fontWeight:500 }}>{fmtEur(s.currentValueEur)}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Stats bar */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
-        {[
-          { label:'Totaal transacties', value: sorted.length, mono: false },
-          { label:'Totale portfolio', value: fmtEur(summaries.reduce((s,x)=>s+x.currentValueEur,0)), mono: true },
-          { label:'Transactiekosten', value: totalFees > 0 ? `−${fmtEur(totalFees,{decimals:2})}` : '—', color:'var(--negative)', mono: true },
-          { label:'Via cashback', value: totalCashback > 0 ? fmtEur(totalCashback,{decimals:2}) : '—', color:'var(--positive)', mono: true },
-        ].map(st => (
-          <div key={st.label} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'16px 18px' }}>
-            <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'0.06em', color:'var(--fg-muted)', marginBottom:6 }}>{st.label}</div>
-            <div style={{ fontSize:22, fontFamily: st.mono ? 'var(--ff-mono)' : 'var(--ff-display)', fontWeight:500, color: st.color || 'var(--fg)' }}>
-              {st.value}
-            </div>
-          </div>
-        ))}
       </div>
 
       {/* Filters */}
@@ -117,10 +74,10 @@ function TransactionsTab({ state, setState, spots }) {
       </div>
 
       {/* Transaction list */}
-      <div style={{ border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', overflow:'hidden' }}>
+      <div style={{ borderTop:'1px solid var(--border)' }}>
         {/* Table header */}
         <div style={{ display:'grid', gridTemplateColumns:'100px 120px 120px 1fr 110px 110px 110px 80px 70px',
-          background:'var(--surface-2)', padding:'10px 16px', fontSize:10, fontWeight:600,
+          padding:'10px 0', fontSize:10, fontWeight:600,
           color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.06em', fontFamily:'var(--ff-mono)', gap:8 }}>
           <span>Datum</span>
           <span>Partij</span>
@@ -148,7 +105,7 @@ function TransactionsTab({ state, setState, spots }) {
               {/* Main row */}
               <div onClick={() => setExpandedId(expanded ? null : t.id)}
                 style={{ display:'grid', gridTemplateColumns:'100px 120px 120px 1fr 110px 110px 110px 80px 70px',
-                  padding:'12px 16px', gap:8, alignItems:'center', cursor:'pointer',
+                  padding:'12px 0', gap:8, alignItems:'center', cursor:'pointer',
                   background: expanded ? 'var(--surface-2)' : 'transparent',
                   transition:'background .1s' }}>
                 <span style={{ fontFamily:'var(--ff-mono)', fontSize:12, color:'var(--fg-muted)' }}>
