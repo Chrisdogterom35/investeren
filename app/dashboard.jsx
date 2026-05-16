@@ -506,46 +506,40 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
       {/* HERO TOTALS */}
       {isMobile ? (
-        /* ── Mobile hero: compact 2×2 grid ── */
-        <Card style={{ padding:'22px 18px 18px', marginBottom:16 }}>
-          {/* Big total */}
-          <div style={{ marginBottom:18 }}>
-            <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'0.1em', color:'var(--fg-muted)', marginBottom:6, fontFamily:'var(--ff-mono)' }}>
-              Totale waarde
+        <Card style={{ padding:'16px 15px 14px', marginBottom:10 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+            <div style={{ minWidth:0 }}>
+              <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.1em', color:'var(--fg-muted)', marginBottom:5, fontFamily:'var(--ff-mono)' }}>
+                Totale waarde
+              </div>
+              <div style={{ fontFamily:'var(--ff-display)', fontSize:38, fontWeight:500, lineHeight:1, letterSpacing:'-0.02em' }}>
+                {fmtEur(total, {decimals:0})}
+              </div>
             </div>
-            <div style={{ fontFamily:'var(--ff-display)', fontSize:52, fontWeight:500, letterSpacing:'-0.025em', lineHeight:1 }}>
-              {fmtEur(total, {decimals:0})}
-            </div>
-            <div style={{ display:'flex', gap:12, alignItems:'center', marginTop:10, flexWrap:'wrap' }}>
+            <div style={{ textAlign:'right', paddingTop:16 }}>
               <Delta value={totalPnl} format="eur" />
-              <Delta value={totalPnlPct} />
-              <span style={{ fontSize:12, color:'var(--fg-dim)' }}>all-time</span>
+              <div style={{ marginTop:3 }}><Delta value={totalPnlPct} /></div>
             </div>
           </div>
-          {/* 2×2 stats */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px 10px' }}>
-            <div>
-              <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--fg-muted)', marginBottom:3, fontFamily:'var(--ff-mono)' }}>Ingelegd</div>
-              <div style={{ fontFamily:'var(--ff-mono)', fontSize:15, fontWeight:500 }}>{fmtEur(totalInvested)}</div>
-              <div style={{ fontSize:10, color:'var(--fg-dim)' }}>{firstTxDate ? `vanaf ${fmtDate(firstTxDate)}` : '—'}</div>
-            </div>
-            <div>
-              <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--fg-muted)', marginBottom:3, fontFamily:'var(--ff-mono)' }}>YTD</div>
-              <div style={{ fontFamily:'var(--ff-mono)', fontSize:15, fontWeight:500 }}><Delta value={ytd.pnlPct} /></div>
-              <div style={{ fontSize:10, color:'var(--fg-dim)' }}>{fmtEur(ytd.pnl, {sign:true})} dit jaar</div>
-            </div>
-            <div>
-              <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--fg-muted)', marginBottom:3, fontFamily:'var(--ff-mono)' }}>Dividenden</div>
-              <div style={{ fontFamily:'var(--ff-mono)', fontSize:15, fontWeight:500 }}>{fmtEur(summaries.reduce((s,x)=>s+x.totalIncome,0))}</div>
-              <div style={{ fontSize:10, color:'var(--fg-dim)' }}>{summaries.filter(s=>s.currentValueEur>0).length} partijen</div>
-            </div>
-            <div>
-              <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--fg-muted)', marginBottom:3, fontFamily:'var(--ff-mono)' }}>Kosten</div>
-              <div style={{ fontFamily:'var(--ff-mono)', fontSize:15, fontWeight:500, color: totalFees > 0 ? 'var(--negative)' : undefined }}>
-                {totalFees > 0 ? `−${fmtEur(totalFees,{decimals:2})}` : '—'}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:7, marginTop:14 }}>
+            {[
+              { label:'Ingelegd', value:fmtEur(totalInvested, { decimals:0 }), sub:firstTxDate ? fmtDate(firstTxDate) : '—' },
+              { label:'YTD', value:<Delta value={ytd.pnlPct} />, sub:fmtEur(ytd.pnl, { sign:true, decimals:0 }) },
+              { label:'Partijen', value:summaries.filter(s=>s.currentValueEur>0).length, sub:`${state.transactions.length} tx` },
+            ].map(item => (
+              <div key={item.label} style={{ minWidth:0, padding:'8px 9px', background:'var(--surface-2)',
+                border:'1px solid var(--border)', borderRadius:'var(--radius)' }}>
+                <div style={{ fontSize:9, color:'var(--fg-dim)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }}>
+                  {item.label}
+                </div>
+                <div style={{ fontFamily:'var(--ff-mono)', fontSize:12, fontWeight:650, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                  {item.value}
+                </div>
+                <div style={{ fontSize:9, color:'var(--fg-dim)', fontFamily:'var(--ff-mono)', marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                  {item.sub}
+                </div>
               </div>
-              <div style={{ fontSize:10, color:'var(--fg-dim)' }}>{state.transactions.length} transacties</div>
-            </div>
+            ))}
           </div>
         </Card>
       ) : (
@@ -668,8 +662,8 @@ function CurrentPricesList({ spots, spotStatus, isMobile }) {
   ];
 
   return (
-    <Card style={{ padding: isMobile ? '12px' : '14px 18px', marginBottom: isMobile ? 14 : 20 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:12, marginBottom:10 }}>
+    <Card style={{ padding: isMobile ? '10px 11px' : '14px 18px', marginBottom: isMobile ? 10 : 20 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:12, marginBottom:isMobile ? 8 : 10 }}>
         <div style={{ fontSize:12, fontWeight:600, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.06em' }}>
           Huidige koersen
         </div>
@@ -678,14 +672,17 @@ function CurrentPricesList({ spots, spotStatus, isMobile }) {
         </div>
       </div>
       <div style={{
-        display:'grid',
-        gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(6, minmax(0, 1fr))',
+        display: isMobile ? 'flex' : 'grid',
+        overflowX: isMobile ? 'auto' : undefined,
+        gridTemplateColumns: isMobile ? undefined : 'repeat(6, minmax(0, 1fr))',
         gap: isMobile ? 8 : 10,
+        paddingBottom: isMobile ? 1 : 0,
       }}>
         {prices.map(p => (
           <div key={p.label} style={{
             minWidth:0,
-            padding:'8px 9px',
+            flex: isMobile ? '0 0 132px' : undefined,
+            padding: isMobile ? '7px 8px' : '8px 9px',
             background:'var(--surface-2)',
             border:'1px solid var(--border)',
             borderRadius:'var(--radius)',
@@ -705,11 +702,11 @@ function CurrentPricesList({ spots, spotStatus, isMobile }) {
 
 // Compacte partijrijen voor mobiel home-scherm
 function MobilePartyRows({ summaries, total }) {
-  const [metric, setMetric] = React.useState('value');
+  const [metric, setMetric] = React.useState('all_eur');
   const METRICS = [
-    { key: 'value',   label: 'Grootte' },
-    { key: 'all_pct', label: 'Winst %' },
     { key: 'all_eur', label: 'Winst €' },
+    { key: 'all_pct', label: 'Winst %' },
+    { key: 'value',   label: 'Waarde' },
   ];
 
   const rows = [...summaries]
@@ -721,7 +718,7 @@ function MobilePartyRows({ summaries, total }) {
     });
 
   return (
-    <Card style={{ padding: '14px 16px' }}>
+    <Card style={{ padding: '12px 14px' }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
         <div style={{ fontSize:13, fontWeight:600, letterSpacing:'-0.01em' }}>Partijen</div>
         <div style={{ display:'flex', gap:4 }}>
@@ -745,7 +742,7 @@ function MobilePartyRows({ summaries, total }) {
           const share = total > 0 ? (s.currentValueEur / total * 100) : 0;
           return (
             <div key={s.party.id} style={{ display:'flex', alignItems:'center', gap:9,
-              padding:'9px 0', borderBottom: i < rows.length-1 ? '1px solid var(--border)' : 'none' }}>
+              padding:'8px 0', borderBottom: i < rows.length-1 ? '1px solid var(--border)' : 'none' }}>
               <div style={{ width:8, height:8, borderRadius:'50%', background:s.party.color, flexShrink:0 }} />
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
@@ -755,9 +752,7 @@ function MobilePartyRows({ summaries, total }) {
                   color: isVal
                     ? (s.pnl||0)>=0 ? 'var(--positive)' : 'var(--negative)'
                     : 'var(--fg-dim)' }}>
-                  {s.party.unit === 'crypto' && s.quantity > 0
-                    ? formatHoldingQty(s)
-                    : isVal
+                  {isVal
                     ? `${(s.pnl||0)>=0?'+':'−'}${fmtEur(Math.abs(s.pnl||0))} · ${(s.pnlPct||0)>=0?'+':''}${(s.pnlPct||0).toFixed(1)}%`
                     : `${fmtEur(s.currentValueEur)} · ${share.toFixed(0)}%`}
                 </div>
