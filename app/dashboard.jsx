@@ -10,7 +10,7 @@ const TILE_METRICS = [
   { key: 'share',     label: 'Aandeel portfolio', short: 'share' },
 ];
 
-function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSpot, addTrigger = 0, isMobile = false, onUpdateMeesman = () => {} }) {
+function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSpot, addTrigger = 0, isMobile = false, onUpdateMeesman = () => {}, onOpenParty }) {
   const [modalOpen, setModalOpen]               = React.useState(false);
   const [modalPreset, setModalPreset]           = React.useState(null);
   const [editingTx, setEditingTx]               = React.useState(null);
@@ -175,7 +175,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     }
     return summaries
       .filter(s => s.currentValueEur > 0)
-      .map(s => ({ label: s.party.name, value: s.currentValueEur, color: s.party.color }))
+      .map(s => ({ label: s.party.name, value: s.currentValueEur, color: s.party.color, partyId: s.party.id }))
       .sort((a, b) => b.value - a.value);
   }, [summaries, allocationMode]);
 
@@ -258,8 +258,9 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
               ))}
             </div>
             {ct === 'balk'
-              ? <AllocationBarChart items={allocationItems} />
-              : <DonutChart items={allocationItems} size={isMobile ? 250 : 180} thickness={isMobile ? 38 : 30} legendBelow={isMobile} legendColumns={isMobile ? 2 : 1} />}
+              ? <AllocationBarChart items={allocationItems} onItemClick={item => item?.partyId && onOpenParty && onOpenParty(item.partyId)} />
+              : <DonutChart items={allocationItems} size={isMobile ? 250 : 180} thickness={isMobile ? 38 : 30} legendBelow={isMobile} legendColumns={isMobile ? 2 : 1}
+                  onItemClick={item => item?.partyId && onOpenParty && onOpenParty(item.partyId)} />}
           </WidgetShell>
         );
       case 'party_comparison':
@@ -1217,8 +1218,9 @@ function AddPartyModal({ open, onClose, onSave, initial }) {
 function MonthlyTable({ months }) {
   const rows = [...months].reverse().slice(0, 8);
   return (
-    <div style={{ display:'grid', gap:6 }}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr 1fr', fontSize:10, color:'var(--fg-muted)',
+    <div className="monthly-table-wrap" style={{ overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
+    <div className="monthly-table" style={{ display:'grid', gap:6, minWidth:620 }}>
+      <div className="monthly-row monthly-head" style={{ display:'grid', gridTemplateColumns:'1.1fr 1fr 1fr 1fr 1fr 1fr', fontSize:10, color:'var(--fg-muted)',
         textTransform:'uppercase', letterSpacing:'0.05em', padding:'0 4px 6px', borderBottom:'1px solid var(--border)', fontFamily:'var(--ff-mono)' }}>
         <span>Maand</span>
         <span style={{ textAlign:'right' }}>Inleg</span>
@@ -1228,7 +1230,7 @@ function MonthlyTable({ months }) {
         <span style={{ textAlign:'right' }}>Transactiekosten</span>
       </div>
       {rows.map(m => (
-        <div key={m.month} style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr 1fr', fontSize:13,
+        <div className="monthly-row" key={m.month} style={{ display:'grid', gridTemplateColumns:'1.1fr 1fr 1fr 1fr 1fr 1fr', fontSize:13,
           padding:'8px 4px', borderBottom:'1px dashed var(--border)', fontFamily:'var(--ff-mono)' }}>
           <span style={{ color:'var(--fg)' }}>{fmtMonth(m.month)}</span>
           <span style={{ textAlign:'right', color:m.inleg>0?'var(--fg)':'var(--fg-dim)' }}>{m.inleg>0?fmtEur(m.inleg):'—'}</span>
@@ -1239,6 +1241,7 @@ function MonthlyTable({ months }) {
         </div>
       ))}
       {rows.length===0 && <div style={{ color:'var(--fg-dim)', fontSize:13, padding:20, textAlign:'center' }}>Geen data.</div>}
+    </div>
     </div>
   );
 }

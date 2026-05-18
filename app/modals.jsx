@@ -9,9 +9,9 @@ function Modal({ open, onClose, children, width = 520 }) {
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(10,10,10,0.45)',
+    <div className="modal-backdrop" onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(10,10,10,0.45)',
       backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:100, padding:20 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:'var(--surface)',
+      <div className="modal-panel" onClick={e => e.stopPropagation()} style={{ background:'var(--surface)',
         border:'1px solid var(--border-strong)', borderRadius:'var(--radius-lg)',
         width, maxWidth:'100%', maxHeight:'92vh', overflow:'auto',
         boxShadow:'0 20px 60px rgba(0,0,0,0.35)' }}>
@@ -124,7 +124,7 @@ function TransactionModal({ open, onClose, onSave, preset, parties, initial, tra
   const isMeesman = party.id === 'meesman';
 
   return (
-    <Modal open={open} onClose={onClose} width={520}>
+    <Modal open={open} onClose={onClose} width={720}>
       <div style={{ padding:'20px 22px 10px', borderBottom:'1px solid var(--border)' }}>
         <div style={{ fontFamily:'var(--ff-display)', fontSize:24, fontWeight:500, letterSpacing:'-0.01em' }}>
           {initial ? 'Transactie bewerken' : 'Nieuwe transactie'}
@@ -337,7 +337,7 @@ function TransactionModal({ open, onClose, onSave, preset, parties, initial, tra
 function PartyDetail({ open, onClose, party, summary, onAddTx, onDeleteTx, onEditTx, spots }) {
   if (!open || !party) return null;
   return (
-    <Modal open={open} onClose={onClose} width={740}>
+    <Modal open={open} onClose={onClose} width={960}>
       <div className="party-detail-header" style={{ padding:'22px 26px 16px', borderBottom:'1px solid var(--border)',
         display:'flex', alignItems:'start', justifyContent:'space-between', gap:18 }}>
         <div>

@@ -206,7 +206,7 @@ function AllocationLineChart({ timeSeries, parties, height = 240 }) {
 }
 
 // ====== Donut chart ======
-function DonutChart({ items, size = 200, thickness = 34, legendBelow = false, legendColumns = 1 }) {
+function DonutChart({ items, size = 200, thickness = 34, legendBelow = false, legendColumns = 1, onItemClick }) {
   const total = items.reduce((s, it) => s + it.value, 0) || 1;
   const r = size / 2, inner = r - thickness;
   let angle = -Math.PI / 2;
@@ -234,6 +234,7 @@ function DonutChart({ items, size = 200, thickness = 34, legendBelow = false, le
           <path key={i} d={a.d} fill={a.color} stroke="var(--surface)" strokeWidth="2"
             opacity={hover==null||hover===i?1:0.3}
             onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
+            onClick={() => onItemClick && onItemClick(items[i])}
             style={{ transition:'opacity .15s', cursor:'pointer' }} />
         ))}
         <text x={r} y={r-6} textAnchor="middle" fill="var(--fg-muted)" fontSize="10" fontFamily="var(--ff-mono)" style={{ textTransform:'uppercase', letterSpacing:'0.05em' }}>
@@ -249,6 +250,7 @@ function DonutChart({ items, size = 200, thickness = 34, legendBelow = false, le
         gap: legendBelow ? '7px 12px' : 6, minWidth:0 }}>
         {arcs.map((a, i) => (
           <div key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
+            onClick={() => onItemClick && onItemClick(items[i])}
             style={{ display:'grid', gridTemplateColumns: legendBelow ? '10px minmax(0, 1fr) auto' : '10px minmax(0, 1fr) auto auto',
               alignItems:'center', gap: legendBelow ? 6 : 8, fontSize:12, opacity:hover==null||hover===i?1:0.5, transition:'opacity .15s', cursor:'pointer', minWidth:0 }}>
             <div style={dotStyle(a.color, 10)} />
@@ -263,12 +265,13 @@ function DonutChart({ items, size = 200, thickness = 34, legendBelow = false, le
 }
 
 // ====== Bar chart: allocation (for widget chart type switching) ======
-function AllocationBarChart({ items, height = 180 }) {
+function AllocationBarChart({ items, height = 180, onItemClick }) {
   const max = Math.max(1, ...items.map(it => it.value));
   return (
     <div style={{ display:'grid', gap:10 }}>
       {items.map((it) => (
-        <div key={it.label} style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(60px,3fr) 68px', alignItems:'center', gap:8, fontSize:12 }}>
+        <div key={it.label} onClick={() => onItemClick && onItemClick(it)}
+          style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(60px,3fr) 68px', alignItems:'center', gap:8, fontSize:12, cursor:onItemClick?'pointer':'default' }}>
           <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'var(--fg)' }}>{it.label}</div>
           <div style={{ height:14, background:'var(--surface-2)', borderRadius:2, overflow:'hidden' }}>
             <div style={{ width:`${(it.value/max)*100}%`, height:'100%', background:it.color, borderRadius:2, transition:'width .4s' }} />

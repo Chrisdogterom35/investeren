@@ -915,6 +915,7 @@ function App() {
               tweaks={displayTweaks} setTweaks={updateTweaks}
               spotStatus={spotStatus} onRefreshSpot={refreshSpot}
               addTrigger={mobileAddTrigger} isMobile={true}
+              onOpenParty={partyId => setMobileDetailPartyId(partyId)}
               onUpdateMeesman={updateMeesmanNav} />
           )}
           {mobileTab === 'partijen' && (
