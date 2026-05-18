@@ -590,13 +590,13 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
                 <div>{renderWidget(wCfg)}</div>
                 {/* Compacte partijrijen direct na de waarde-over-tijd grafiek */}
                 {wCfg.id === 'portfolio_line' && (
-                  <MobilePartyRows summaries={summaries} total={total} />
+                  <MobilePartyRows summaries={summaries} total={total} onOpenParty={onOpenParty} />
                 )}
               </React.Fragment>
             ))}
           {/* Fallback: als portfolio_line niet actief is, toon rijen bovenaan */}
           {!activeWidgets.find(w => w.id === 'portfolio_line') && (
-            <MobilePartyRows summaries={summaries} total={total} />
+            <MobilePartyRows summaries={summaries} total={total} onOpenParty={onOpenParty} />
           )}
 
           {/* Koersen bijwerken — onderaan de pagina */}
@@ -713,7 +713,7 @@ function CurrentPricesList({ spots, spotStatus, isMobile }) {
 }
 
 // Compacte partijrijen voor mobiel home-scherm
-function MobilePartyRows({ summaries, total }) {
+function MobilePartyRows({ summaries, total, onOpenParty }) {
   const [metric, setMetric] = React.useState('all_eur');
   const METRICS = [
     { key: 'all_eur', label: 'Winst €' },
@@ -753,8 +753,10 @@ function MobilePartyRows({ summaries, total }) {
           const isVal = metric === 'value';
           const share = total > 0 ? (s.currentValueEur / total * 100) : 0;
           return (
-            <div key={s.party.id} style={{ display:'flex', alignItems:'center', gap:9,
-              padding:'9px 0', borderBottom: i < rows.length-1 ? '1px solid var(--border)' : 'none' }}>
+            <button key={s.party.id} onClick={() => onOpenParty && onOpenParty(s.party.id)}
+              style={{ display:'flex', alignItems:'center', gap:9, width:'100%', textAlign:'left',
+              padding:'9px 0', border:'none', borderBottom: i < rows.length-1 ? '1px solid var(--border)' : 'none',
+              background:'transparent', color:'inherit', fontFamily:'inherit', cursor:'pointer' }}>
               <div style={{ width:8, height:8, borderRadius:'50%', background:s.party.color, flexShrink:0 }} />
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
@@ -777,7 +779,8 @@ function MobilePartyRows({ summaries, total }) {
                   ? `${(val||0)>=0?'+':''}${(val||0).toFixed(1)}%`
                   : `${(val||0)>=0?'+':'−'}${fmtEur(Math.abs(val||0))}`}
               </div>
-            </div>
+              <div aria-hidden="true" style={{ color:'var(--fg-dim)', fontSize:17, lineHeight:1, flexShrink:0 }}>›</div>
+            </button>
           );
         })}
       </div>

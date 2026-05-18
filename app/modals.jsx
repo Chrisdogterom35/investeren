@@ -1,17 +1,34 @@
 // Modals: add/edit transaction, party detail
 
 function Modal({ open, onClose, children, width = 520 }) {
+  const touchStart = React.useRef(null);
   React.useEffect(() => {
     if (!open) return;
     const k = e => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [open, onClose]);
+  const handleTouchStart = e => {
+    const t = e.touches?.[0];
+    if (!t) return;
+    touchStart.current = { x: t.clientX, y: t.clientY };
+  };
+  const handleTouchEnd = e => {
+    const start = touchStart.current;
+    const t = e.changedTouches?.[0];
+    touchStart.current = null;
+    if (!start || !t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (dx > 80 && Math.abs(dy) < 60) onClose();
+  };
   if (!open) return null;
   return (
     <div className="modal-backdrop" onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(10,10,10,0.45)',
       backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:100, padding:20 }}>
-      <div className="modal-panel" onClick={e => e.stopPropagation()} style={{ background:'var(--surface)',
+      <div className="modal-panel" onClick={e => e.stopPropagation()}
+        onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}
+        style={{ background:'var(--surface)',
         border:'1px solid var(--border-strong)', borderRadius:'var(--radius-lg)',
         width, maxWidth:'100%', maxHeight:'92vh', overflow:'auto',
         boxShadow:'0 20px 60px rgba(0,0,0,0.35)' }}>
