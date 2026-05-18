@@ -1222,22 +1222,22 @@ function MonthlyTable({ months }) {
     <div className="monthly-table" style={{ display:'grid', gap:6, minWidth:620 }}>
       <div className="monthly-row monthly-head" style={{ display:'grid', gridTemplateColumns:'1.1fr 1fr 1fr 1fr 1fr 1fr', fontSize:10, color:'var(--fg-muted)',
         textTransform:'uppercase', letterSpacing:'0.05em', padding:'0 4px 6px', borderBottom:'1px solid var(--border)', fontFamily:'var(--ff-mono)' }}>
-        <span>Maand</span>
-        <span style={{ textAlign:'right' }}>Inleg</span>
-        <span style={{ textAlign:'right' }}>Koop</span>
-        <span style={{ textAlign:'right' }}>Inkomsten</span>
-        <span style={{ textAlign:'right' }}>Kosten</span>
-        <span style={{ textAlign:'right' }}>Transactiekosten</span>
+        <span className="monthly-cell monthly-month">Maand</span>
+        <span className="monthly-cell monthly-inleg" style={{ textAlign:'right' }}>Inleg</span>
+        <span className="monthly-cell monthly-koop" style={{ textAlign:'right' }}>Koop</span>
+        <span className="monthly-cell monthly-income" style={{ textAlign:'right' }}>Inkomsten</span>
+        <span className="monthly-cell monthly-costs" style={{ textAlign:'right' }}>Kosten</span>
+        <span className="monthly-cell monthly-fees" style={{ textAlign:'right' }}>Tx-kosten</span>
       </div>
       {rows.map(m => (
         <div className="monthly-row" key={m.month} style={{ display:'grid', gridTemplateColumns:'1.1fr 1fr 1fr 1fr 1fr 1fr', fontSize:13,
           padding:'8px 4px', borderBottom:'1px dashed var(--border)', fontFamily:'var(--ff-mono)' }}>
-          <span style={{ color:'var(--fg)' }}>{fmtMonth(m.month)}</span>
-          <span style={{ textAlign:'right', color:m.inleg>0?'var(--fg)':'var(--fg-dim)' }}>{m.inleg>0?fmtEur(m.inleg):'—'}</span>
-          <span style={{ textAlign:'right', color:m.koop>0?'var(--fg)':'var(--fg-dim)' }}>{m.koop>0?fmtEur(m.koop):'—'}</span>
-          <span style={{ textAlign:'right', color:m.dividend>0?'var(--positive)':'var(--fg-dim)' }}>{m.dividend>0?`+${fmtEur(m.dividend,{decimals:2})}`:'—'}</span>
-          <span style={{ textAlign:'right', color:(m.opname+m.kosten)>0?'var(--negative)':'var(--fg-dim)' }}>{(m.opname+m.kosten)>0?`−${fmtEur(m.opname+m.kosten)}`:'—'}</span>
-          <span style={{ textAlign:'right', color:m.fees>0?'var(--negative)':'var(--fg-dim)' }}>{m.fees>0?`−${fmtEur(m.fees,{decimals:2})}`:'—'}</span>
+          <span className="monthly-cell monthly-month" style={{ color:'var(--fg)' }}>{fmtMonth(m.month)}</span>
+          <span className="monthly-cell monthly-inleg" data-label="Inleg" style={{ textAlign:'right', color:m.inleg>0?'var(--fg)':'var(--fg-dim)' }}>{m.inleg>0?fmtEur(m.inleg):'—'}</span>
+          <span className="monthly-cell monthly-koop" data-label="Koop" style={{ textAlign:'right', color:m.koop>0?'var(--fg)':'var(--fg-dim)' }}>{m.koop>0?fmtEur(m.koop):'—'}</span>
+          <span className="monthly-cell monthly-income" data-label="Ink." style={{ textAlign:'right', color:m.dividend>0?'var(--positive)':'var(--fg-dim)' }}>{m.dividend>0?`+${fmtEur(m.dividend,{decimals:2})}`:'—'}</span>
+          <span className="monthly-cell monthly-costs" data-label="Kosten" style={{ textAlign:'right', color:(m.opname+m.kosten)>0?'var(--negative)':'var(--fg-dim)' }}>{(m.opname+m.kosten)>0?`−${fmtEur(m.opname+m.kosten)}`:'—'}</span>
+          <span className="monthly-cell monthly-fees" data-label="Tx" style={{ textAlign:'right', color:m.fees>0?'var(--negative)':'var(--fg-dim)' }}>{m.fees>0?`−${fmtEur(m.fees,{decimals:2})}`:'—'}</span>
         </div>
       ))}
       {rows.length===0 && <div style={{ color:'var(--fg-dim)', fontSize:13, padding:20, textAlign:'center' }}>Geen data.</div>}

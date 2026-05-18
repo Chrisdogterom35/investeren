@@ -290,10 +290,40 @@
     .party-detail-actions { width: 100% !important; display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
     .party-detail-actions button { width: 100% !important; justify-content: center !important; }
     .party-detail-stats { grid-template-columns: 1fr 1fr !important; padding: 16px 18px !important; gap: 10px !important; }
-    .monthly-table-wrap { margin: 0 -2px; padding-bottom: 4px; }
-    .monthly-table { min-width: 540px !important; gap: 2px !important; }
-    .monthly-row { font-size: 11px !important; padding: 6px 2px !important; column-gap: 7px !important; }
-    .monthly-head { font-size: 8px !important; padding-bottom: 5px !important; letter-spacing: 0.03em !important; }
+    .monthly-table-wrap { margin: 0; overflow-x: visible !important; padding-bottom: 2px; }
+    .monthly-table { min-width: 0 !important; gap: 0 !important; }
+    .monthly-head { display: none !important; }
+    .monthly-row {
+      grid-template-columns: 76px minmax(0, 1fr) minmax(0, 1fr) !important;
+      grid-template-areas:
+        "month inleg koop"
+        "month income costs"
+        "month fees fees" !important;
+      column-gap: 10px !important;
+      row-gap: 4px !important;
+      font-size: 11px !important;
+      padding: 9px 0 !important;
+    }
+    .monthly-cell { min-width: 0; }
+    .monthly-month { grid-area: month; align-self: center; font-size: 12px !important; white-space: nowrap; }
+    .monthly-inleg { grid-area: inleg; }
+    .monthly-koop { grid-area: koop; }
+    .monthly-income { grid-area: income; }
+    .monthly-costs { grid-area: costs; }
+    .monthly-fees { grid-area: fees; }
+    .monthly-row .monthly-cell:not(.monthly-month) {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      text-align: right !important;
+      white-space: nowrap;
+    }
+    .monthly-row .monthly-cell:not(.monthly-month)::before {
+      content: attr(data-label);
+      color: var(--fg-dim);
+      text-align: left;
+      font-size: 9px;
+    }
     .tx-page { padding: 18px 14px 96px !important; }
     .tx-page h1 { font-size: 30px !important; }
     .tx-table-head { display: none !important; }
@@ -417,7 +447,7 @@
 <script type="text/babel" src="app/ui.jsx?v=20260511b"></script>
 <script type="text/babel" src="app/charts.jsx?v=20260518a"></script>
 <script type="text/babel" src="app/modals.jsx?v=20260518a"></script>
-<script type="text/babel" src="app/dashboard.jsx?v=20260518a"></script>
+<script type="text/babel" src="app/dashboard.jsx?v=20260518b"></script>
 <script type="text/babel" src="app/tabs.jsx?v=20260516b"></script>
 <script type="text/babel" src="app/main.jsx?v=20260518a"></script>
 </body>
