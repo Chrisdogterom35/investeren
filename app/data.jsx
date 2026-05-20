@@ -66,6 +66,20 @@ const d = (monthsAgo, day = 15) => {
   return dt.toISOString().slice(0, 10);
 };
 
+function todayIsoLocal() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function addDaysIso(iso, days = 1) {
+  const dt = new Date(`${iso}T00:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
 const MEESMAN_NAV_SEED_HISTORY = [
   { date: '2025-01-12', nav: 88.2833 },
   { date: '2025-01-13', nav: 88.6971 },
@@ -541,12 +555,10 @@ function buildPartyTimeSeries(transactions, parties, spots) {
   const byParty = Object.fromEntries(parties.map(p => [p.id, []]));
   const total = []; const invested = [];
 
-  const start = new Date(sorted[0].date); start.setHours(0,0,0,0);
-  const end = new Date(); end.setHours(0,0,0,0);
   let ti = 0;
-  const cur = new Date(start);
-  while (cur <= end) {
-    const iso = cur.toISOString().slice(0, 10);
+  let iso = sorted[0].date;
+  const endIso = todayIsoLocal();
+  while (iso <= endIso) {
     while (ti < sorted.length && sorted[ti].date <= iso) {
       const t = sorted[ti]; const s = state[t.party]; if (!s) { ti++; continue; }
       const p = parties.find(x => x.id === t.party);
@@ -701,7 +713,7 @@ function buildPartyTimeSeries(transactions, parties, spots) {
       tot += v; inv += s.cost;
     }
     dates.push(iso); total.push(tot); invested.push(inv);
-    cur.setDate(cur.getDate() + 1);
+    iso = addDaysIso(iso, 1);
   }
 
   return { dates, byParty, total, invested };

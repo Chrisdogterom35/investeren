@@ -80,8 +80,19 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       .filter(p => p.date && Number.isFinite(p.total) && Number.isFinite(p.invested))
       .sort((a, b) => a.date.localeCompare(b.date));
     const liveSeries = buildValueTimeSeries(state.transactions, allParties, spots);
-    return liveSeries.length ? liveSeries : supabaseSeries;
-  }, [state.portfolioDailyValues, state.transactions, spots, allParties]);
+    const byDate = new Map();
+    supabaseSeries.forEach(p => byDate.set(p.date, p));
+    liveSeries.forEach(p => byDate.set(p.date, p));
+    const todayPoint = {
+      date: todayIsoLocal(),
+      total,
+      invested: totalInvested,
+    };
+    byDate.set(todayPoint.date, todayPoint);
+    return [...byDate.values()]
+      .filter(p => p.date >= '2025-01-01')
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [state.portfolioDailyValues, state.transactions, spots, allParties, total, totalInvested]);
   const partyTimeSeries = React.useMemo(
     () => buildPartyTimeSeries(state.transactions, allParties, spots),
     [state.transactions, spots, allParties]
