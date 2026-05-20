@@ -156,21 +156,30 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       commodities: { label: 'Commodities', color: 'oklch(76% 0.14 85)' },
       cash:        { label: 'Cash',        color: 'oklch(55% 0.05 160)' },
     };
+    const knownCategories = new Set(CATEGORY_OPTIONS);
     const groupForParty = p => {
       if (p.id === 'cash' || p.category === 'Liquide') return 'cash';
       if (p.category === 'Crypto') return 'crypto';
       if (p.category === 'Edelmetaal' || ['goldrepublic', 'goud', 'zilver'].includes(p.id)) return 'commodities';
+      if (p.category && !knownCategories.has(p.category)) return `custom:${p.category}`;
       return 'aandelen';
     };
     if (allocationMode === 'groups') {
       const grouped = {};
+      const customMeta = {};
       summaries.forEach(s => {
         if (s.currentValueEur <= 0) return;
         const key = groupForParty(s.party);
         grouped[key] = (grouped[key] || 0) + s.currentValueEur;
+        if (key.startsWith('custom:') && !customMeta[key]) {
+          customMeta[key] = { label: s.party.category, color: s.party.color };
+        }
       });
       return Object.entries(grouped)
-        .map(([key, value]) => ({ label: groupMeta[key].label, value, color: groupMeta[key].color }))
+        .map(([key, value]) => {
+          const meta = groupMeta[key] || customMeta[key] || { label: key.replace(/^custom:/, ''), color: 'var(--accent)' };
+          return { label: meta.label, value, color: meta.color };
+        })
         .sort((a, b) => b.value - a.value);
     }
     return summaries
@@ -652,7 +661,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       />
       <AddPartyModal
         open={addPartyOpen} onClose={() => { setAddPartyOpen(false); setEditParty(null); }}
-        onSave={saveCustomParty} initial={editParty}
+        onSave={saveCustomParty} initial={editParty} parties={allParties}
       />
     </div>
   );
@@ -1122,6 +1131,7 @@ const PARTY_UNIT_OPTIONS = [
   { value:'bundle', label:'Bundel (totaalwaarde)' },
 ];
 const CATEGORY_OPTIONS = ['Indexfondsen','Crypto','Edelmetaal','Broker','Liquide','Overig'];
+const CUSTOM_CATEGORY_VALUE = '__custom_category__';
 const COLOR_PRESETS = [
   'oklch(58% 0.14 255)','oklch(72% 0.18 55)','oklch(60% 0.12 265)',
   'oklch(76% 0.14 85)','oklch(62% 0.15 195)','oklch(55% 0.16 145)',
@@ -1129,11 +1139,12 @@ const COLOR_PRESETS = [
   'oklch(62% 0.13 170)','oklch(72% 0.22 310)','oklch(55% 0.05 160)',
 ];
 
-function AddPartyModal({ open, onClose, onSave, initial }) {
+function AddPartyModal({ open, onClose, onSave, initial, parties = [] }) {
   const blank = p => ({
     name:     p?.name     || '',
     subtitle: p?.subtitle || '',
     category: p?.category || 'Overig',
+    customCategory: '',
     unit:     p?.unit     || 'eur',
     unitLabel:p?.unitLabel|| '€',
     goal:     p?.goal     || '',
@@ -1143,14 +1154,28 @@ function AddPartyModal({ open, onClose, onSave, initial }) {
   const [form, setForm] = React.useState(() => blank(initial));
   React.useEffect(() => { if (open) setForm(blank(initial)); }, [open, initial]);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const categoryOptions = React.useMemo(() => {
+    const seen = new Set();
+    return [...CATEGORY_OPTIONS, ...(parties || []).map(p => p.category).filter(Boolean), initial?.category]
+      .filter(Boolean)
+      .filter(c => {
+        if (seen.has(c)) return false;
+        seen.add(c);
+        return true;
+      });
+  }, [parties, initial]);
+  const selectedCategory = categoryOptions.includes(form.category) ? form.category : CUSTOM_CATEGORY_VALUE;
+  const finalCategory = selectedCategory === CUSTOM_CATEGORY_VALUE
+    ? (form.customCategory || form.category || '').trim()
+    : form.category;
 
-  const valid = form.name.trim().length > 0;
+  const valid = form.name.trim().length > 0 && finalCategory.length > 0;
 
   const submit = () => {
     if (!valid) return;
     const id = initial?.id || 'custom_' + Date.now().toString(36);
     onSave({ id, name:form.name.trim(), subtitle:form.subtitle.trim(),
-      category:form.category, unit:form.unit, unitLabel:form.unitLabel||'€',
+      category:finalCategory, unit:form.unit, unitLabel:form.unitLabel||'€',
       goal: +form.goal || 0, color:form.color,
       ...(form.unit==='crypto' && form.spotKey ? { spotKey:form.spotKey } : {}),
     });
@@ -1176,8 +1201,13 @@ function AddPartyModal({ open, onClose, onSave, initial }) {
         </Field>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
           <Field label="Categorie">
-            <Select value={form.category} onChange={e => set('category', e.target.value)}>
-              {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+            <Select value={selectedCategory} onChange={e => {
+              const value = e.target.value;
+              if (value === CUSTOM_CATEGORY_VALUE) setForm(f => ({ ...f, category: CUSTOM_CATEGORY_VALUE, customCategory: '' }));
+              else setForm(f => ({ ...f, category: value, customCategory: '' }));
+            }}>
+              {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value={CUSTOM_CATEGORY_VALUE}>Nieuwe allocatie…</option>
             </Select>
           </Field>
           <Field label="Type eenheid">
@@ -1186,6 +1216,11 @@ function AddPartyModal({ open, onClose, onSave, initial }) {
             </Select>
           </Field>
         </div>
+        {selectedCategory === CUSTOM_CATEGORY_VALUE && (
+          <Field label="Nieuwe allocatie" hint="Deze naam blijft daarna beschikbaar als allocatie.">
+            <Input value={form.customCategory} onChange={e => set('customCategory', e.target.value)} placeholder="bijv. Pensioen, Vastgoed, Obligaties" />
+          </Field>
+        )}
         {form.unit === 'crypto' && (
           <Field label="Spot-prijs sleutel (optioneel)" hint="bijv. btcSpotEur, ethSpotEur, paxgSpotEur">
             <Input value={form.spotKey} onChange={e => set('spotKey', e.target.value)} placeholder="btcSpotEur" />
