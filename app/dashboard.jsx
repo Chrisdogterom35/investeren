@@ -79,27 +79,56 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       .map(p => ({ date: p.date, total: +p.total, invested: +p.invested }))
       .filter(p => p.date && Number.isFinite(p.total) && Number.isFinite(p.invested))
       .sort((a, b) => a.date.localeCompare(b.date));
-    return supabaseSeries.length
-      ? supabaseSeries
-      : buildValueTimeSeries(state.transactions, allParties, spots);
+    const liveSeries = buildValueTimeSeries(state.transactions, allParties, spots);
+    return liveSeries.length ? liveSeries : supabaseSeries;
   }, [state.portfolioDailyValues, state.transactions, spots, allParties]);
   const partyTimeSeries = React.useMemo(
     () => buildPartyTimeSeries(state.transactions, allParties, spots),
     [state.transactions, spots, allParties]
   );
+  const allocationGroups = React.useMemo(() => {
+    const knownCategories = new Set(CATEGORY_OPTIONS);
+    const groupForParty = p => {
+      if (p.id === 'cash' || p.category === 'Liquide') return { id:'cash', name:'Cash', color:'oklch(55% 0.05 160)' };
+      if (p.category === 'Crypto') return { id:'crypto', name:'Crypto', color:'oklch(62% 0.15 195)' };
+      if (p.category === 'Edelmetaal' || ['goldrepublic', 'goud', 'zilver'].includes(p.id)) return { id:'commodities', name:'Commodities', color:'oklch(76% 0.14 85)' };
+      if (p.category && !knownCategories.has(p.category)) return { id:`allocation:${p.category}`, name:p.category, color:p.color };
+      return { id:'aandelen', name:'Aandelen', color:'oklch(58% 0.14 255)' };
+    };
+    const groups = new Map();
+    allParties.forEach(p => {
+      const group = groupForParty(p);
+      if (!groups.has(group.id)) groups.set(group.id, group);
+    });
+    return [...groups.values()];
+  }, [allParties]);
   const allocationTimeSeries = React.useMemo(() => {
     const startDate = '2025-01-01';
     const firstPoint = partyTimeSeries.dates.findIndex(d => d >= startDate);
-    if (firstPoint <= 0) return partyTimeSeries;
-    return {
-      dates: partyTimeSeries.dates.slice(firstPoint),
-      total: partyTimeSeries.total.slice(firstPoint),
-      invested: partyTimeSeries.invested.slice(firstPoint),
-      byParty: Object.fromEntries(
-        Object.entries(partyTimeSeries.byParty).map(([id, values]) => [id, values.slice(firstPoint)])
-      ),
+    const sliceAt = firstPoint > 0 ? firstPoint : 0;
+    const dates = partyTimeSeries.dates.slice(sliceAt);
+    const byAllocation = Object.fromEntries(allocationGroups.map(g => [g.id, dates.map(() => 0)]));
+    const knownCategories = new Set(CATEGORY_OPTIONS);
+    const groupIdForParty = p => {
+      if (p.id === 'cash' || p.category === 'Liquide') return 'cash';
+      if (p.category === 'Crypto') return 'crypto';
+      if (p.category === 'Edelmetaal' || ['goldrepublic', 'goud', 'zilver'].includes(p.id)) return 'commodities';
+      if (p.category && !knownCategories.has(p.category)) return `allocation:${p.category}`;
+      return 'aandelen';
     };
-  }, [partyTimeSeries]);
+    allParties.forEach(p => {
+      const groupId = groupIdForParty(p);
+      const values = (partyTimeSeries.byParty[p.id] || []).slice(sliceAt);
+      if (!byAllocation[groupId]) byAllocation[groupId] = dates.map(() => 0);
+      values.forEach((value, i) => { byAllocation[groupId][i] += value || 0; });
+    });
+    return {
+      dates,
+      total: partyTimeSeries.total.slice(sliceAt),
+      invested: partyTimeSeries.invested.slice(sliceAt),
+      byParty: byAllocation,
+    };
+  }, [partyTimeSeries, allParties, allocationGroups]);
   const monthly = React.useMemo(() => buildMonthlyFlows(state.transactions), [state.transactions]);
 
   const ytd = React.useMemo(() => calcYTDReturn(timeSeries), [timeSeries]);
@@ -298,28 +327,28 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
           </WidgetShell>
         );
       case 'allocation_lines': {
-        const visibleParties = allParties.filter(p => !hiddenParties.includes(p.id));
+        const visibleAllocations = allocationGroups.filter(group => !hiddenParties.includes(group.id));
         return (
           <WidgetShell>
-            {header('Waarde per allocatie', 'Ontwikkeling per partij')}
+            {header('Waarde per allocatie', 'Ontwikkeling per allocatiegroep')}
             {/* Visibility toggles */}
             <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:10 }}>
-              {allParties.map(p => {
-                const hidden = hiddenParties.includes(p.id);
+              {allocationGroups.map(group => {
+                const hidden = hiddenParties.includes(group.id);
                 return (
-                  <button key={p.id} onClick={() => setHiddenParties(
-                    hidden ? hiddenParties.filter(id => id !== p.id) : [...hiddenParties, p.id]
+                  <button key={group.id} onClick={() => setHiddenParties(
+                    hidden ? hiddenParties.filter(id => id !== group.id) : [...hiddenParties, group.id]
                   )} style={{
                     padding:'3px 9px', fontSize:11, fontFamily:'inherit', cursor:'pointer', borderRadius:999,
-                    background: hidden ? 'transparent' : p.color,
+                    background: hidden ? 'transparent' : group.color,
                     color: hidden ? 'var(--fg-dim)' : '#fff',
-                    border: `1px solid ${hidden ? 'var(--border)' : p.color}`,
+                    border: `1px solid ${hidden ? 'var(--border)' : group.color}`,
                     opacity: hidden ? 0.5 : 1, transition:'all .15s',
-                  }}>{p.name}</button>
+                  }}>{group.name}</button>
                 );
               })}
             </div>
-            <AllocationLineChart timeSeries={allocationTimeSeries} parties={visibleParties} height={isMobile ? 220 : 260} />
+            <AllocationLineChart timeSeries={allocationTimeSeries} parties={visibleAllocations} height={isMobile ? 220 : 260} />
           </WidgetShell>
         );
       }
