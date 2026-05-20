@@ -576,10 +576,11 @@ function App() {
     clearTimeout(syncTimerRef.current);
     pendingSaveRef.current = false;
     // Fire-and-forget; mobiel kan na pagehide alsnog de fetch afronden
-    Promise.all([
-      supabaseSaveSettings(client, stateRef.current),
-      supabaseSyncTransactions(client, stateRef.current.transactions || []),
-    ])
+    const jobs = [supabaseSaveSettings(client, stateRef.current)];
+    if (transactionsLoadedRef.current) {
+      jobs.push(supabaseSyncTransactions(client, stateRef.current.transactions || []));
+    }
+    Promise.all(jobs)
       .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
       .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
   }, [supabaseConfig]);
@@ -589,18 +590,18 @@ function App() {
     const client = getSupabaseClient(supabaseConfig);
     if (!client) return;
     if (!supabaseLoadedRef.current) return; // wacht op eerste load zodat we niets overschrijven
-    if (!transactionsLoadedRef.current) return; // voorkom dat een lege lokale set remote data overschrijft
     pendingSaveRef.current = true;
     clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
       pendingSaveRef.current = false;
-      Promise.all([
-        supabaseSaveSettings(client, state),
-        supabaseSyncTransactions(client, state.transactions || []),
-      ])
+      const jobs = [supabaseSaveSettings(client, state)];
+      if (transactionsLoadedRef.current) {
+        jobs.push(supabaseSyncTransactions(client, state.transactions || []));
+      }
+      Promise.all(jobs)
         .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
         .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
-    }, 3000);
+    }, 900);
   }, [state]); // eslint-disable-line
 
   // Flush bij wegnavigeren — kritiek voor mobiel waar de app vaak in achtergrond verdwijnt
@@ -1513,7 +1514,6 @@ function MobilePartijenView({ summaries, onOpenParty, onQuickAdd }) {
   const [displayMode, setDisplayMode] = React.useState('pnl_eur');
 
   const enriched = summaries
-    .filter(s => s.currentValueEur > 0 || s.invested > 0)
     .map(s => {
       const dates = (s.transactions || []).map(t => t.date).sort();
       const firstDate = dates[0];
