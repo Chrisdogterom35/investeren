@@ -1123,12 +1123,12 @@ function PartyCard({ summary, total, spots, onClick, onQuickAdd, metric = 'pnl_e
 
 // ===== Modal: voeg aangepaste partij toe / bewerk =====
 const PARTY_UNIT_OPTIONS = [
-  { value:'eur',    label:'Euro (€) — cash/sparen' },
-  { value:'part',   label:'Participaties / aandelen' },
-  { value:'gram',   label:'Gram goud' },
-  { value:'ounce',  label:'Ounce zilver' },
-  { value:'crypto', label:'Crypto token' },
-  { value:'bundle', label:'Bundel (totaalwaarde)' },
+  { value:'bundle', label:'Totale waarde — zoals Top 25 / Trading 212', defaultLabel:'€' },
+  { value:'part',   label:'Aantal × prijs — normale aandelen / participaties', defaultLabel:'st.' },
+  { value:'eur',    label:'Eurobedrag — cash / sparen', defaultLabel:'€' },
+  { value:'crypto', label:'Token × koers — Bitcoin / Ethereum / PAXG', defaultLabel:'TOKEN' },
+  { value:'gram',   label:'Gram × spotprijs — goud', defaultLabel:'g' },
+  { value:'ounce',  label:'Ounce × spotprijs — zilver', defaultLabel:'oz' },
 ];
 const CATEGORY_OPTIONS = ['Indexfondsen','Crypto','Edelmetaal','Broker','Liquide','Overig'];
 const CUSTOM_CATEGORY_VALUE = '__custom_category__';
@@ -1168,6 +1168,15 @@ function AddPartyModal({ open, onClose, onSave, initial, parties = [] }) {
   const finalCategory = selectedCategory === CUSTOM_CATEGORY_VALUE
     ? (form.customCategory || form.category || '').trim()
     : form.category;
+  const setUnit = value => {
+    const option = PARTY_UNIT_OPTIONS.find(o => o.value === value);
+    setForm(f => ({
+      ...f,
+      unit: value,
+      unitLabel: option?.defaultLabel || f.unitLabel || '€',
+      spotKey: value === 'crypto' ? f.spotKey : '',
+    }));
+  };
 
   const valid = form.name.trim().length > 0 && finalCategory.length > 0;
 
@@ -1210,8 +1219,8 @@ function AddPartyModal({ open, onClose, onSave, initial, parties = [] }) {
               <option value={CUSTOM_CATEGORY_VALUE}>Nieuwe allocatie…</option>
             </Select>
           </Field>
-          <Field label="Type eenheid">
-            <Select value={form.unit} onChange={e => set('unit', e.target.value)}>
+          <Field label="Waarderingsmethode">
+            <Select value={form.unit} onChange={e => setUnit(e.target.value)}>
               {PARTY_UNIT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </Field>
