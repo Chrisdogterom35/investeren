@@ -138,6 +138,33 @@ function bundleWeeklyInterpolatedValue(partyTxs, date) {
   return Math.max(0, current.cost + startPnl + (endPnl - startPnl) * fraction);
 }
 
+function weeklyInterpolatedValue(points, date, fallback = null) {
+  const vals = [...points]
+    .filter(p => p.date && p.value != null && Number.isFinite(+p.value))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const prev = vals.filter(v => v.date <= date).slice(-1)[0] || null;
+  const next = vals.find(v => v.date > date) || null;
+  if (!next) return prev ? +prev.value : fallback;
+  const startDate = prev?.date || date;
+  const startValue = prev ? +prev.value : (fallback ?? +next.value);
+  const endValue = +next.value;
+  const totalWeeks = Math.max(1, Math.ceil(daysBetween(startDate, next.date) / 7));
+  const elapsedWeeks = Math.min(totalWeeks, Math.floor(daysBetween(startDate, date) / 7));
+  return startValue + (endValue - startValue) * (elapsedWeeks / totalWeeks);
+}
+
+function unitValuationPoints(partyTxs) {
+  return [...partyTxs]
+    .filter(t => t.type === 'waardering' && t.unitPriceEur != null)
+    .map(t => ({ date: t.date, value: +t.unitPriceEur }));
+}
+
+function totalValuationPoints(partyTxs) {
+  return [...partyTxs]
+    .filter(t => t.type === 'waardering' && t.valueEur != null)
+    .map(t => ({ date: t.date, value: +t.valueEur }));
+}
+
 async function fetchSpotPrices() {
   const [goldRes, silverRes, fxRes] = await Promise.all([
     fetchJson('https://api.gold-api.com/price/XAU'),
@@ -346,6 +373,9 @@ function priceRowsByAsset(rows) {
 
 function calculatePortfolioValue(date, transactions, history, parties = PARTIES) {
   const partyMap = Object.fromEntries(parties.map(p => [p.id, p]));
+  const txByParty = Object.fromEntries(parties.map(p => [p.id, transactions.filter(t => t.party === p.id)]));
+  const unitValuationsByParty = Object.fromEntries(parties.map(p => [p.id, unitValuationPoints(txByParty[p.id] || [])]));
+  const totalValuationsByParty = Object.fromEntries(parties.map(p => [p.id, totalValuationPoints(txByParty[p.id] || [])]));
   const state = Object.fromEntries(parties.map(p => [p.id, {
     qty: 0,
     goldQty: 0,
@@ -466,18 +496,30 @@ function calculatePortfolioValue(date, transactions, history, parties = PARTIES)
   let invested = 0;
   for (const p of parties) {
     const s = state[p.id];
+    const unitValuations = unitValuationsByParty[p.id] || [];
+    const totalValuations = totalValuationsByParty[p.id] || [];
+    const avgCostPx = s.qty > 0 ? s.cost / s.qty : null;
     let value = 0;
     if (p.isMixed) {
-      const gold = findPrice(history, 'gold_eur_per_gram', date) || 0;
-      const silver = findPrice(history, 'silver_eur_per_ounce', date) || 0;
-      value = s.lastTotal ?? (s.goldQty * gold + s.silverQty * silver);
+      const manualTotal = weeklyInterpolatedValue(totalValuations, date, null);
+      if (manualTotal != null) value = manualTotal;
+      else {
+        const gold = findPrice(history, 'gold_eur_per_gram', date) || 0;
+        const silver = findPrice(history, 'silver_eur_per_ounce', date) || 0;
+        value = s.goldQty * gold + s.silverQty * silver;
+      }
     } else if (p.unit === 'crypto' || p.unit === 'part' || p.unit === 'gram' || p.unit === 'ounce') {
-      const price = s.lastUnitPx ?? (p.priceAsset ? findPrice(history, p.priceAsset, date) : null);
-      value = s.lastTotal ?? ((price || 0) * s.qty);
+      const manualTotal = weeklyInterpolatedValue(totalValuations, date, null);
+      if (manualTotal != null) value = manualTotal;
+      else {
+        const historyPrice = p.priceAsset ? findPrice(history, p.priceAsset, date) : null;
+        const manualPrice = weeklyInterpolatedValue(unitValuations, date, avgCostPx);
+        value = (historyPrice ?? manualPrice ?? 0) * s.qty;
+      }
     } else if (p.unit === 'bundle') {
-      value = bundleWeeklyInterpolatedValue(transactions.filter(t => t.party === p.id), date);
+      value = bundleWeeklyInterpolatedValue(txByParty[p.id] || [], date);
     } else if (p.unit === 'eur') {
-      value = s.lastTotal ?? s.qty;
+      value = weeklyInterpolatedValue(totalValuations, date, s.qty) ?? s.qty;
     }
     total += value;
     invested += s.cost;

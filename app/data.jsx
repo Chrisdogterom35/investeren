@@ -303,6 +303,33 @@ function bundleWeeklyInterpolatedValue(partyTxs, date) {
   return Math.max(0, current.cost + interpolatedPnl);
 }
 
+function weeklyInterpolatedValue(points, date, fallback = null) {
+  const vals = [...points]
+    .filter(p => p.date && p.value != null && Number.isFinite(+p.value))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const prev = vals.filter(v => v.date <= date).slice(-1)[0] || null;
+  const next = vals.find(v => v.date > date) || null;
+  if (!next) return prev ? +prev.value : fallback;
+  const startDate = prev?.date || date;
+  const startValue = prev ? +prev.value : (fallback ?? +next.value);
+  const endValue = +next.value;
+  const totalWeeks = Math.max(1, Math.ceil(daysBetween(startDate, next.date) / 7));
+  const elapsedWeeks = Math.min(totalWeeks, Math.floor(daysBetween(startDate, date) / 7));
+  return startValue + (endValue - startValue) * (elapsedWeeks / totalWeeks);
+}
+
+function unitValuationPoints(partyTxs) {
+  return [...partyTxs]
+    .filter(t => t.type === 'waardering' && t.unitPriceEur != null)
+    .map(t => ({ date: t.date, value: +t.unitPriceEur }));
+}
+
+function totalValuationPoints(partyTxs) {
+  return [...partyTxs]
+    .filter(t => t.type === 'waardering' && t.valueEur != null)
+    .map(t => ({ date: t.date, value: +t.valueEur }));
+}
+
 // Valuation for a party — tracks goud/zilver quantities separately for goldrepublic.
 function summarizeParty(party, transactions, spots) {
   const txs = transactions
@@ -504,6 +531,9 @@ function summarizeParty(party, transactions, spots) {
 function buildPartyTimeSeries(transactions, parties, spots) {
   if (!transactions.length) return { dates: [], byParty: {}, total: [], invested: [] };
   const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date));
+  const txByParty = Object.fromEntries(parties.map(p => [p.id, sorted.filter(t => t.party === p.id)]));
+  const unitValuationsByParty = Object.fromEntries(parties.map(p => [p.id, unitValuationPoints(txByParty[p.id] || [])]));
+  const totalValuationsByParty = Object.fromEntries(parties.map(p => [p.id, totalValuationPoints(txByParty[p.id] || [])]));
   const state = {};
   for (const p of parties) state[p.id] = { qty: 0, goldQty: 0, silverQty: 0, cost: 0, lastUnitPx: null, lastTotal: null };
 
@@ -627,31 +657,33 @@ function buildPartyTimeSeries(transactions, parties, spots) {
     let tot = 0, inv = 0;
     for (const p of parties) {
       const s = state[p.id];
+      const unitValuations = unitValuationsByParty[p.id] || [];
+      const totalValuations = totalValuationsByParty[p.id] || [];
+      const avgCostPx = s.qty > 0 ? s.cost / s.qty : null;
       let v;
       if (p.isMixed) {
-        if (s.lastTotal != null) {
-          v = s.lastTotal;
-        } else {
-          const goldPx = s.lastUnitPx ?? (spots.goldHistory?.length ? findNavForDate(spots.goldHistory, iso) : null) ?? (spots.goldSpotEurPerGram||0);
+        const manualTotal = weeklyInterpolatedValue(totalValuations, iso, null);
+        if (manualTotal != null) v = manualTotal;
+        else {
+          const goldPx = (spots.goldHistory?.length ? findNavForDate(spots.goldHistory, iso) : null) ?? (spots.goldSpotEurPerGram||0);
           const silvPx = (spots.silverHistory?.length ? findNavForDate(spots.silverHistory, iso) : null) ?? (spots.silverSpotEurPerOunce||0);
           v = s.goldQty * goldPx + s.silverQty * silvPx;
         }
       } else if (p.unit === 'crypto') {
-        if (s.lastTotal != null) {
-          v = s.lastTotal;
-        } else {
+        const manualTotal = weeklyInterpolatedValue(totalValuations, iso, null);
+        if (manualTotal != null) v = manualTotal;
+        else {
           const histKey = CRYPTO_HIST_KEY[p.spotKey];
           const histPx = histKey && spots[histKey]?.length ? findNavForDate(spots[histKey], iso) : null;
-          v = s.qty * (s.lastUnitPx ?? histPx ?? spots[p.spotKey] ?? 0);
+          const manualPx = weeklyInterpolatedValue(unitValuations, iso, avgCostPx);
+          v = s.qty * (histPx ?? manualPx ?? spots[p.spotKey] ?? 0);
         }
       } else if (p.unit === 'bundle') {
-        v = bundleWeeklyInterpolatedValue(sorted.filter(t => t.party === p.id), iso);
+        v = bundleWeeklyInterpolatedValue(txByParty[p.id] || [], iso);
       } else if (p.unit === 'eur') {
-        v = s.lastTotal ?? s.qty;
-      } else if (s.lastTotal != null) {
-        v = s.lastTotal;
+        v = weeklyInterpolatedValue(totalValuations, iso, s.qty) ?? s.qty;
       } else {
-        let px = s.lastUnitPx;
+        let px = null;
         // Meesman: gebruik historische NAV indien beschikbaar
         if (px == null && p.id === 'meesman' && spots.meesmanNavHistory?.length) {
           const histNav = findNavForDate(spots.meesmanNavHistory, iso);
@@ -660,8 +692,10 @@ function buildPartyTimeSeries(transactions, parties, spots) {
         if (px == null && p.unit === 'gram')  px = (spots.goldHistory?.length   ? findNavForDate(spots.goldHistory,   iso) : null) ?? spotEurForParty(p, spots);
         if (px == null && p.unit === 'ounce') px = (spots.silverHistory?.length ? findNavForDate(spots.silverHistory, iso) : null) ?? spotEurForParty(p, spots);
         if (px == null) px = spotEurForParty(p, spots); // meesman live NAV als fallback
-        if (px == null && s.qty > 0) px = s.cost / s.qty;
-        v = (px || 0) * s.qty;
+        if (px == null) px = weeklyInterpolatedValue(unitValuations, iso, avgCostPx);
+        if (px == null && s.qty > 0) px = avgCostPx;
+        const manualTotal = px == null ? weeklyInterpolatedValue(totalValuations, iso, null) : null;
+        v = manualTotal ?? ((px || 0) * s.qty);
       }
       byParty[p.id].push(v);
       tot += v; inv += s.cost;
