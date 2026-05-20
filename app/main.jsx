@@ -487,6 +487,41 @@ function App() {
     try { localStorage.setItem(SUPABASE_CFG_KEY, JSON.stringify(supabaseConfig)); } catch {}
   }, [supabaseConfig]);
 
+  const applyRemoteData = React.useCallback(remoteData => {
+    if (!remoteData) {
+      transactionsLoadedRef.current = false;
+      return;
+    }
+    const { _transactionsLoaded, ...remote } = remoteData;
+    transactionsLoadedRef.current = _transactionsLoaded !== false;
+    setState(s => {
+      const meesman = normalizeMeesmanHistory(
+        mergePriceHistory(s.meesmanNavHistory, remote.meesmanNavHistory)
+      );
+      const remoteTxs = (remote.transactions || [])
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      const mergedParties = normalizeParties(mergeById(s.parties, remote.parties));
+      const mergedTweaks = { ...(s.tweaks || {}), ...(remote.tweaks || {}) };
+
+      return {
+        ...s,
+        ...remote,
+        transactions:      remoteTxs,
+        parties:           mergedParties.length ? mergedParties : normalizeParties(s.parties || []),
+        tweaks:            mergedTweaks,
+        meesmanNavEur:     meesman.currentNav,
+        meesmanNavHistory: meesman.history,
+        goldHistory:       mergePriceHistory(s.goldHistory,   remote.goldHistory),
+        silverHistory:     mergePriceHistory(s.silverHistory, remote.silverHistory),
+        btcHistory:        mergePriceHistory(s.btcHistory,    remote.btcHistory),
+        ethHistory:        mergePriceHistory(s.ethHistory,    remote.ethHistory),
+        paxgHistory:       mergePriceHistory(s.paxgHistory,   remote.paxgHistory),
+        portfolioDailyValues: remote.portfolioDailyValues?.length ? remote.portfolioDailyValues : (s.portfolioDailyValues || []),
+      };
+    });
+  }, []);
+
   // Laad data van Supabase bij opstarten
   const didInitialLoad = React.useRef(false);
   React.useEffect(() => {
@@ -498,41 +533,7 @@ function App() {
     setSyncStatus({ loading: true, error: null, syncedAt: null });
     supabaseLoadAll(client)
       .then(remoteData => {
-        if (remoteData) {
-          const { _transactionsLoaded, ...remote } = remoteData;
-          transactionsLoadedRef.current = _transactionsLoaded !== false;
-          setState(s => {
-            const meesman = normalizeMeesmanHistory(
-              mergePriceHistory(s.meesmanNavHistory, remote.meesmanNavHistory)
-            );
-            const remoteTxs = (remote.transactions || [])
-              .sort((a, b) => a.date.localeCompare(b.date));
-
-            // Merge parties op ID — zelfde principe
-            const mergedParties = normalizeParties(mergeById(s.parties, remote.parties));
-
-            // Merge tweaks (object): remote wint per key, maar lokaal blijft als remote geen waarde heeft
-            const mergedTweaks = { ...(s.tweaks || {}), ...(remote.tweaks || {}) };
-
-            return {
-              ...s,
-              ...remote,
-              transactions:      remoteTxs,
-              parties:           mergedParties.length ? mergedParties : normalizeParties(s.parties || []),
-              tweaks:            mergedTweaks,
-              meesmanNavEur:     meesman.currentNav,
-              meesmanNavHistory: meesman.history,
-              goldHistory:       mergePriceHistory(s.goldHistory,   remote.goldHistory),
-              silverHistory:     mergePriceHistory(s.silverHistory, remote.silverHistory),
-              btcHistory:        mergePriceHistory(s.btcHistory,    remote.btcHistory),
-              ethHistory:        mergePriceHistory(s.ethHistory,    remote.ethHistory),
-              paxgHistory:       mergePriceHistory(s.paxgHistory,   remote.paxgHistory),
-              portfolioDailyValues: remote.portfolioDailyValues?.length ? remote.portfolioDailyValues : (s.portfolioDailyValues || []),
-            };
-          });
-        } else {
-          transactionsLoadedRef.current = false;
-        }
+        applyRemoteData(remoteData);
         supabaseLoadedRef.current = true;
         setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
       })
@@ -541,7 +542,7 @@ function App() {
         transactionsLoadedRef.current = false;
         setSyncStatus({ loading: false, error: e.message, syncedAt: null });
       });
-  }, [supabaseConfig.url, supabaseConfig.anonKey]);
+  }, [supabaseConfig.url, supabaseConfig.anonKey, applyRemoteData]);
 
   // Haal 1 jaar crypto-geschiedenis op als de history leeg is
   React.useEffect(() => {
@@ -568,24 +569,50 @@ function App() {
   const pendingSaveRef = React.useRef(false);
   React.useEffect(() => { stateRef.current = state; }, [state]);
 
-  // Doe een synchrone save NU (gebruikt bij pagehide/visibilitychange)
-  const flushSave = React.useCallback(() => {
-    if (!pendingSaveRef.current) return;
+  const saveSnapshotToSupabase = React.useCallback(snapshot => {
     const client = getSupabaseClient(supabaseConfig);
-    if (!client) return;
-    clearTimeout(syncTimerRef.current);
-    pendingSaveRef.current = false;
-    // Fire-and-forget; mobiel kan na pagehide alsnog de fetch afronden
-    const jobs = [supabaseSaveSettings(client, stateRef.current)];
+    if (!client) return Promise.resolve(false);
+    const jobs = [supabaseSaveSettings(client, snapshot)];
     if (transactionsLoadedRef.current) {
-      jobs.push(supabaseSyncTransactions(client, stateRef.current.transactions || []));
+      jobs.push(supabaseSyncTransactions(client, snapshot.transactions || []));
     }
-    Promise.all(jobs)
+    return Promise.all(jobs)
       .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
-      .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
+      .then(() => true);
   }, [supabaseConfig]);
 
-  // Automatisch opslaan: 3s debounce. Markeer als "pending" zodat flush kan vuren.
+  // Save NU (gebruikt bij pagehide/visibilitychange/focus).
+  const flushSave = React.useCallback(() => {
+    if (!pendingSaveRef.current) return Promise.resolve(false);
+    clearTimeout(syncTimerRef.current);
+    pendingSaveRef.current = false;
+    return saveSnapshotToSupabase(stateRef.current)
+      .catch(e => {
+        pendingSaveRef.current = true;
+        setSyncStatus(s => ({ ...s, error: e.message }));
+        return false;
+      });
+  }, [saveSnapshotToSupabase]);
+
+  const reloadSupabase = React.useCallback(() => {
+    if (!supabaseConfig.url || !supabaseConfig.anonKey) return Promise.resolve(false);
+    const client = getSupabaseClient(supabaseConfig);
+    if (!client) return Promise.resolve(false);
+    setSyncStatus(s => ({ ...s, loading: true, error: null }));
+    return supabaseLoadAll(client)
+      .then(remoteData => {
+        applyRemoteData(remoteData);
+        supabaseLoadedRef.current = true;
+        setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
+        return true;
+      })
+      .catch(e => {
+        setSyncStatus(s => ({ ...s, loading: false, error: e.message }));
+        return false;
+      });
+  }, [supabaseConfig, applyRemoteData]);
+
+  // Automatisch opslaan: korte debounce. Markeer als "pending" zodat flush kan vuren.
   React.useEffect(() => {
     const client = getSupabaseClient(supabaseConfig);
     if (!client) return;
@@ -594,14 +621,12 @@ function App() {
     clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
       pendingSaveRef.current = false;
-      const jobs = [supabaseSaveSettings(client, state)];
-      if (transactionsLoadedRef.current) {
-        jobs.push(supabaseSyncTransactions(client, state.transactions || []));
-      }
-      Promise.all(jobs)
-        .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
-        .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
-    }, 900);
+      saveSnapshotToSupabase(state)
+        .catch(e => {
+          pendingSaveRef.current = true;
+          setSyncStatus(s => ({ ...s, error: e.message }));
+        });
+    }, 350);
   }, [state]); // eslint-disable-line
 
   // Flush bij wegnavigeren — kritiek voor mobiel waar de app vaak in achtergrond verdwijnt
@@ -610,15 +635,27 @@ function App() {
       if (document.visibilityState === 'hidden') flushSave();
     };
     const onPageHide = () => flushSave();
+    const onShow = () => {
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      flushSave().finally(() => reloadSupabase());
+    };
     document.addEventListener('visibilitychange', onHide);
+    document.addEventListener('visibilitychange', onShow);
     window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onShow);
+    window.addEventListener('focus', onShow);
+    window.addEventListener('online', onShow);
     window.addEventListener('beforeunload', onPageHide);
     return () => {
       document.removeEventListener('visibilitychange', onHide);
+      document.removeEventListener('visibilitychange', onShow);
       window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onShow);
+      window.removeEventListener('focus', onShow);
+      window.removeEventListener('online', onShow);
       window.removeEventListener('beforeunload', onPageHide);
     };
-  }, [flushSave]);
+  }, [flushSave, reloadSupabase]);
 
   // Apply theme class to <html>
   React.useEffect(() => {
