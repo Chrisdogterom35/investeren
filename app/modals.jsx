@@ -444,36 +444,86 @@ function Stat({ label, value }) {
 
 function TxTable({ txs, party, onDelete, onEdit }) {
   if (!txs.length) return <div style={{ fontSize:13, color:'var(--fg-dim)', padding:'24px 0' }}>Nog geen transacties.</div>;
+
+  // Bepaal de unit-label voor "aantal"
+  const unitLabel = party?.isMixed
+    ? '' // bij goldrepublic wisselt het per transactie
+    : party?.unit === 'crypto' ? (party.unitLabel || '')
+    : party?.unit === 'gram'   ? 'g'
+    : party?.unit === 'ounce'  ? 'oz'
+    : party?.unit === 'part'   ? 'part.'
+    : party?.unit === 'eur'    ? ''
+    : '';
+
+  // Helper om "aantal" netjes te tonen voor een transactie
+  const renderQty = (t) => {
+    if (t.quantity == null) return <span style={{ color:'var(--fg-dim)' }}>—</span>;
+    const sign = (t.type === 'verkoop' || t.type === 'opname') ? '−' : '';
+    const u = party?.isMixed
+      ? ((t.metalType === 'zilver' || t.silverUnit) ? (t.silverUnit === 'gram' ? 'g' : 'oz') : 'g')
+      : unitLabel;
+    return <span>{sign}{fmtQty(Math.abs(+t.quantity), u || '')}</span>;
+  };
+
+  // Helper voor "prijs per stuk"
+  const renderPrice = (t) => {
+    if (t.unitPriceEur == null) return <span style={{ color:'var(--fg-dim)' }}>—</span>;
+    return fmtEur(t.unitPriceEur, { decimals: 2 });
+  };
+
+  // Helper voor "totaal" — gebruikt amountEur als die er is, anders qty × price, of valueEur voor waarderingen
+  const renderTotal = (t) => {
+    let value = null;
+    if (t.type === 'waardering' && t.valueEur != null) value = +t.valueEur;
+    else if (t.amountEur != null) value = +t.amountEur;
+    else if (t.quantity != null && t.unitPriceEur != null) value = +t.quantity * +t.unitPriceEur;
+
+    if (value == null) return <span style={{ color:'var(--fg-dim)' }}>—</span>;
+
+    const positive = ['inleg', 'dividend', 'rente', 'cashback'].includes(t.type);
+    const negative = ['opname', 'verkoop', 'kosten'].includes(t.type);
+    const color = positive ? 'var(--positive)' : negative ? 'var(--negative)' : 'var(--fg)';
+    const sign  = positive ? '+' : negative ? '−' : '';
+    return <span style={{ color }}>{sign}{fmtEur(value, { decimals: 2 })}</span>;
+  };
+
   return (
     <div style={{ border:'1px solid var(--border)', borderRadius:'var(--radius)', overflow:'hidden' }}>
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
         <thead>
-          <tr style={{ background:'var(--surface-2)', color:'var(--fg-muted)', fontSize:11, textTransform:'uppercase', letterSpacing:'0.05em' }}>
-            <th style={th}>Datum</th>
-            <th style={th}>Type</th>
-            <th style={{ ...th, textAlign:'right' }}>Bedrag / Aantal</th>
-            <th style={{ ...th, textAlign:'right' }}>Kosten</th>
-            <th style={th}>Notitie</th>
-            <th style={{ ...th, width:80, textAlign:'right' }}></th>
+          <tr style={{ background:'var(--surface-2)', color:'var(--fg-muted)', fontSize:11,
+            textTransform:'uppercase', letterSpacing:'0.05em' }}>
+            <th style={{ ...th, width:'22%' }}>Datum</th>
+            <th style={{ ...th, textAlign:'right', width:'24%' }}>Aantal</th>
+            <th style={{ ...th, textAlign:'right', width:'22%' }}>Prijs</th>
+            <th style={{ ...th, textAlign:'right', width:'22%' }}>Totaal</th>
+            <th style={{ ...th, width:'10%', textAlign:'right' }}></th>
           </tr>
         </thead>
         <tbody>
           {txs.map(t => (
             <tr key={t.id} style={{ borderTop:'1px solid var(--border)' }}>
-              <td style={{ ...td, fontFamily:'var(--ff-mono)', color:'var(--fg-muted)' }}>{fmtDate(t.date)}</td>
-              <td style={td}><Pill tone={txTone(t.type)}>{TX_LABELS[t.type] || t.type}</Pill></td>
-              <td style={{ ...td, textAlign:'right', fontFamily:'var(--ff-mono)' }}>{formatTxAmount(t, party)}</td>
-              <td style={{ ...td, textAlign:'right', fontFamily:'var(--ff-mono)', fontSize:11, color:'var(--negative)' }}>
-                {t.feeEur > 0 ? `−${fmtEur(t.feeEur, {decimals:2})}` : ''}
+              <td style={{ ...td, fontFamily:'var(--ff-mono)', color:'var(--fg)' }}>
+                {fmtDate(t.date)}
+                {t.type !== 'koop' && (
+                  <div style={{ fontSize:10, color:'var(--fg-dim)', textTransform:'uppercase',
+                    letterSpacing:'0.04em', marginTop:2 }}>
+                    {TX_LABELS[t.type] || t.type}
+                  </div>
+                )}
               </td>
-              <td style={{ ...td, color:'var(--fg-muted)', fontSize:11 }}>{t.note || ''}</td>
+              <td style={{ ...td, textAlign:'right', fontFamily:'var(--ff-mono)' }}>{renderQty(t)}</td>
+              <td style={{ ...td, textAlign:'right', fontFamily:'var(--ff-mono)', color:'var(--fg-muted)' }}>{renderPrice(t)}</td>
+              <td style={{ ...td, textAlign:'right', fontFamily:'var(--ff-mono)', fontWeight:500 }}>{renderTotal(t)}</td>
               <td style={{ ...td, textAlign:'right', whiteSpace:'nowrap' }}>
                 {onEdit && (
                   <button onClick={() => onEdit(t)} title="Bewerken"
-                    style={{ background:'transparent', border:'none', color:'var(--fg-muted)', cursor:'pointer', fontSize:12, padding:'4px 6px', fontFamily:'inherit' }}>✎</button>
+                    style={{ background:'transparent', border:'none', color:'var(--fg-dim)',
+                      cursor:'pointer', fontSize:12, padding:'4px 6px', fontFamily:'inherit' }}>✎</button>
                 )}
                 <button onClick={() => onDelete(t.id)} title="Verwijder"
-                  style={{ background:'transparent', border:'none', color:'var(--fg-dim)', cursor:'pointer', fontSize:16, padding:'4px 6px' }}>×</button>
+                  style={{ background:'transparent', border:'none', color:'var(--fg-dim)',
+                    cursor:'pointer', fontSize:16, padding:'4px 6px' }}>×</button>
               </td>
             </tr>
           ))}

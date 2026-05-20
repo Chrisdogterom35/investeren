@@ -52,6 +52,36 @@ function getSupabaseClient(cfg) {
   catch { return null; }
 }
 
+const PORTFOLIO_SETTINGS_EXCLUDED_KEYS = new Set([
+  'transactions',
+  'portfolioDailyValues',
+  'goldHistory',
+  'silverHistory',
+  'btcHistory',
+  'ethHistory',
+  'paxgHistory',
+  'meesmanNavHistory',
+  'lastWeeklySpotSave',
+  'customParties',
+]);
+
+function portfolioSettingsFromState(state = {}) {
+  return Object.fromEntries(
+    Object.entries(state || {}).filter(([key]) => !PORTFOLIO_SETTINGS_EXCLUDED_KEYS.has(key))
+  );
+}
+
+async function supabaseSelectAll(makeQuery, pageSize = 1000) {
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await makeQuery().range(from, from + pageSize - 1);
+    if (error) return { data: rows, error };
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return { data: rows, error: null };
+}
+
 // camelCase <-> snake_case helpers voor de transactions tabel
 function txToRow(t) {
   return {
@@ -151,9 +181,9 @@ function priceRowsToState(rows = []) {
 async function supabaseLoadAll(client) {
   const [portfolioRes, txRes, priceRes, valueRes] = await Promise.all([
     client.from('portfolio').select('data').eq('id', 'main').maybeSingle(),
-    client.from('transactions').select('*').order('date', { ascending: true }),
-    client.from('asset_price_history').select('asset,date,nav').gte('date', '2025-01-01').order('date', { ascending: true }),
-    client.from('portfolio_daily_values').select('date,total_eur,invested_eur').gte('date', '2025-01-01').order('date', { ascending: true }),
+    supabaseSelectAll(() => client.from('transactions').select('*').order('date', { ascending: true })),
+    supabaseSelectAll(() => client.from('asset_price_history').select('asset,date,nav').gte('date', '2025-01-01').order('date', { ascending: true }).order('asset', { ascending: true })),
+    supabaseSelectAll(() => client.from('portfolio_daily_values').select('date,total_eur,invested_eur').gte('date', '2025-01-01').order('date', { ascending: true })),
   ]);
 
   if (portfolioRes.error && txRes.error && priceRes.error && valueRes.error) {
@@ -198,18 +228,7 @@ async function supabaseLoadAll(client) {
 
 // Sla alleen instellingen op in portfolio; transacties en koershistorie hebben eigen tabellen.
 async function supabaseSaveSettings(client, state) {
-  const {
-    transactions,
-    portfolioDailyValues,
-    goldHistory,
-    silverHistory,
-    btcHistory,
-    ethHistory,
-    paxgHistory,
-    meesmanNavHistory,
-    lastWeeklySpotSave,
-    ...settings
-  } = state;
+  const settings = portfolioSettingsFromState(state);
   const { error } = await client
     .from('portfolio')
     .upsert({ id: 'main', data: settings, updated_at: new Date().toISOString() }, { onConflict: 'id' });
@@ -544,14 +563,37 @@ function App() {
       .catch(() => {});
   }, []); // eenmalig bij mount
 
-  // Automatisch opslaan: instellingen naar portfolio, transacties naar transactions.
+  // Refs zodat de flush-handler altijd de laatste state ziet
+  const stateRef       = React.useRef(state);
+  const pendingSaveRef = React.useRef(false);
+  React.useEffect(() => { stateRef.current = state; }, [state]);
+
+  // Doe een synchrone save NU (gebruikt bij pagehide/visibilitychange)
+  const flushSave = React.useCallback(() => {
+    if (!pendingSaveRef.current) return;
+    const client = getSupabaseClient(supabaseConfig);
+    if (!client) return;
+    clearTimeout(syncTimerRef.current);
+    pendingSaveRef.current = false;
+    // Fire-and-forget; mobiel kan na pagehide alsnog de fetch afronden
+    Promise.all([
+      supabaseSaveSettings(client, stateRef.current),
+      supabaseSyncTransactions(client, stateRef.current.transactions || []),
+    ])
+      .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
+      .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
+  }, [supabaseConfig]);
+
+  // Automatisch opslaan: 3s debounce. Markeer als "pending" zodat flush kan vuren.
   React.useEffect(() => {
     const client = getSupabaseClient(supabaseConfig);
     if (!client) return;
     if (!supabaseLoadedRef.current) return; // wacht op eerste load zodat we niets overschrijven
     if (!transactionsLoadedRef.current) return; // voorkom dat een lege lokale set remote data overschrijft
+    pendingSaveRef.current = true;
     clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
+      pendingSaveRef.current = false;
       Promise.all([
         supabaseSaveSettings(client, state),
         supabaseSyncTransactions(client, state.transactions || []),
@@ -560,6 +602,22 @@ function App() {
         .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
     }, 3000);
   }, [state]); // eslint-disable-line
+
+  // Flush bij wegnavigeren — kritiek voor mobiel waar de app vaak in achtergrond verdwijnt
+  React.useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushSave();
+    };
+    const onPageHide = () => flushSave();
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('beforeunload', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('beforeunload', onPageHide);
+    };
+  }, [flushSave]);
 
   // Apply theme class to <html>
   React.useEffect(() => {
