@@ -372,11 +372,12 @@ function priceRowsByAsset(rows) {
 }
 
 function calculatePortfolioValue(date, transactions, history, parties = PARTIES) {
-  const partyMap = Object.fromEntries(parties.map(p => [p.id, p]));
-  const txByParty = Object.fromEntries(parties.map(p => [p.id, transactions.filter(t => t.party === p.id)]));
-  const unitValuationsByParty = Object.fromEntries(parties.map(p => [p.id, unitValuationPoints(txByParty[p.id] || [])]));
-  const totalValuationsByParty = Object.fromEntries(parties.map(p => [p.id, totalValuationPoints(txByParty[p.id] || [])]));
-  const state = Object.fromEntries(parties.map(p => [p.id, {
+  const includedParties = parties.filter(p => p.includeInPortfolio !== false);
+  const partyMap = Object.fromEntries(includedParties.map(p => [p.id, p]));
+  const txByParty = Object.fromEntries(includedParties.map(p => [p.id, transactions.filter(t => t.party === p.id)]));
+  const unitValuationsByParty = Object.fromEntries(includedParties.map(p => [p.id, unitValuationPoints(txByParty[p.id] || [])]));
+  const totalValuationsByParty = Object.fromEntries(includedParties.map(p => [p.id, totalValuationPoints(txByParty[p.id] || [])]));
+  const state = Object.fromEntries(includedParties.map(p => [p.id, {
     qty: 0,
     goldQty: 0,
     silverQty: 0,
@@ -494,7 +495,7 @@ function calculatePortfolioValue(date, transactions, history, parties = PARTIES)
 
   let total = 0;
   let invested = 0;
-  for (const p of parties) {
+  for (const p of includedParties) {
     const s = state[p.id];
     const unitValuations = unitValuationsByParty[p.id] || [];
     const totalValuations = totalValuationsByParty[p.id] || [];

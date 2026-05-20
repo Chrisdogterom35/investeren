@@ -56,6 +56,14 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
     [state.transactions, spots, allParties]
   );
+  const includedParties = React.useMemo(
+    () => allParties.filter(p => p.includeInPortfolio !== false),
+    [allParties]
+  );
+  const portfolioSummaries = React.useMemo(
+    () => summaries.filter(s => s.party.includeInPortfolio !== false),
+    [summaries]
+  );
 
   const hiddenParties  = state.hiddenParties  || [];
   const tileMetrics    = state.tileMetrics    || {};
@@ -68,9 +76,9 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     setState(s => ({ ...s, tileMetrics: { ...(s.tileMetrics || {}), [partyId]: metric } }));
   }, [setState]);
 
-  const total        = summaries.reduce((s, x) => s + x.currentValueEur, 0);
-  const totalInvested= summaries.reduce((s, x) => s + x.invested, 0);
-  const totalPnl     = summaries.reduce((s, x) => s + x.pnl, 0);
+  const total        = portfolioSummaries.reduce((s, x) => s + x.currentValueEur, 0);
+  const totalInvested= portfolioSummaries.reduce((s, x) => s + x.invested, 0);
+  const totalPnl     = portfolioSummaries.reduce((s, x) => s + x.pnl, 0);
   const totalPnlPct  = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
   const totalFees    = state.transactions.reduce((s, t) => s + (+t.feeEur || 0) + (t.type === 'kosten' ? (+t.amountEur || 0) : 0), 0);
 
@@ -79,7 +87,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       .map(p => ({ date: p.date, total: +p.total, invested: +p.invested }))
       .filter(p => p.date && Number.isFinite(p.total) && Number.isFinite(p.invested))
       .sort((a, b) => a.date.localeCompare(b.date));
-    const liveSeries = buildValueTimeSeries(state.transactions, allParties, spots);
+    const liveSeries = buildValueTimeSeries(state.transactions, includedParties, spots);
     const byDate = new Map();
     supabaseSeries.forEach(p => byDate.set(p.date, p));
     liveSeries.forEach(p => byDate.set(p.date, p));
@@ -92,10 +100,10 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     return [...byDate.values()]
       .filter(p => p.date >= '2025-01-01')
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.portfolioDailyValues, state.transactions, spots, allParties, total, totalInvested]);
+  }, [state.portfolioDailyValues, state.transactions, spots, includedParties, total, totalInvested]);
   const partyTimeSeries = React.useMemo(
-    () => buildPartyTimeSeries(state.transactions, allParties, spots),
-    [state.transactions, spots, allParties]
+    () => buildPartyTimeSeries(state.transactions, includedParties, spots),
+    [state.transactions, spots, includedParties]
   );
   const allocationGroups = React.useMemo(() => {
     const knownCategories = new Set(CATEGORY_OPTIONS);
@@ -107,12 +115,12 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       return { id:'aandelen', name:'Aandelen', color:'oklch(58% 0.14 255)' };
     };
     const groups = new Map();
-    allParties.forEach(p => {
+    includedParties.forEach(p => {
       const group = groupForParty(p);
       if (!groups.has(group.id)) groups.set(group.id, group);
     });
     return [...groups.values()];
-  }, [allParties]);
+  }, [includedParties]);
   const allocationTimeSeries = React.useMemo(() => {
     const startDate = '2025-01-01';
     const firstPoint = partyTimeSeries.dates.findIndex(d => d >= startDate);
@@ -127,7 +135,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       if (p.category && !knownCategories.has(p.category)) return `allocation:${p.category}`;
       return 'aandelen';
     };
-    allParties.forEach(p => {
+    includedParties.forEach(p => {
       const groupId = groupIdForParty(p);
       const values = (partyTimeSeries.byParty[p.id] || []).slice(sliceAt);
       if (!byAllocation[groupId]) byAllocation[groupId] = dates.map(() => 0);
@@ -139,7 +147,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       invested: partyTimeSeries.invested.slice(sliceAt),
       byParty: byAllocation,
     };
-  }, [partyTimeSeries, allParties, allocationGroups]);
+  }, [partyTimeSeries, includedParties, allocationGroups]);
   const monthly = React.useMemo(() => buildMonthlyFlows(state.transactions), [state.transactions]);
 
   const ytd = React.useMemo(() => calcYTDReturn(timeSeries), [timeSeries]);
@@ -207,7 +215,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     if (allocationMode === 'groups') {
       const grouped = {};
       const customMeta = {};
-      summaries.forEach(s => {
+      portfolioSummaries.forEach(s => {
         if (s.currentValueEur <= 0) return;
         const key = groupForParty(s.party);
         grouped[key] = (grouped[key] || 0) + s.currentValueEur;
@@ -222,11 +230,11 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
         })
         .sort((a, b) => b.value - a.value);
     }
-    return summaries
+    return portfolioSummaries
       .filter(s => s.currentValueEur > 0)
       .map(s => ({ label: s.party.name, value: s.currentValueEur, color: s.party.color, partyId: s.party.id }))
       .sort((a, b) => b.value - a.value);
-  }, [summaries, allocationMode]);
+  }, [portfolioSummaries, allocationMode]);
 
   const saveCustomParty = React.useCallback(p => {
     setState(s => {
@@ -316,7 +324,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
         return (
           <WidgetShell>
             {header('Inleg vs. waarde', 'Per partij')}
-            <InvestedVsValueChart summaries={summaries} height={isMobile ? 210 : 240} />
+            <InvestedVsValueChart summaries={portfolioSummaries} height={isMobile ? 210 : 240} />
           </WidgetShell>
         );
       case 'returns':
@@ -324,8 +332,8 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
           <WidgetShell>
             {header('Rendement', ct === 'tabel' ? 'Overzicht per partij' : '% per partij')}
             {ct === 'tabel'
-              ? <ReturnTable summaries={summaries} />
-              : <div style={{ marginTop:8 }}><ReturnBars summaries={summaries} /></div>}
+              ? <ReturnTable summaries={portfolioSummaries} />
+              : <div style={{ marginTop:8 }}><ReturnBars summaries={portfolioSummaries} /></div>}
           </WidgetShell>
         );
       case 'monthly_inleg':
@@ -442,7 +450,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
           </WidgetShell>
         );
       case 'metal_holdings': {
-        const metalSummaries = summaries.filter(s => s.party.unit==='gram'||s.party.unit==='ounce'||s.party.isMixed);
+        const metalSummaries = portfolioSummaries.filter(s => s.party.unit==='gram'||s.party.unit==='ounce'||s.party.isMixed);
         return (
           <WidgetShell>
             {header('Edelmetalen', 'Bezit & waarden')}
@@ -469,7 +477,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
         return (
           <WidgetShell>
             {header('Doelen voortgang', 'Per partij')}
-            <GoalsProgress summaries={summaries} />
+            <GoalsProgress summaries={portfolioSummaries} />
           </WidgetShell>
         );
       default: return null;
@@ -581,7 +589,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
             {[
               { label:'Ingelegd', value:fmtEur(totalInvested, { decimals:0 }), sub:firstTxDate ? fmtDate(firstTxDate) : '—' },
               { label:'YTD', value:<Delta value={ytd.pnlPct} />, sub:fmtEur(ytd.pnl, { sign:true, decimals:0 }) },
-              { label:'Partijen', value:summaries.filter(s=>s.currentValueEur>0).length, sub:`${state.transactions.length} tx` },
+              { label:'Partijen', value:portfolioSummaries.filter(s=>s.currentValueEur>0).length, sub:`${state.transactions.length} tx` },
             ].map((item, idx) => (
               <div key={item.label} style={{ minWidth:0, padding:'9px 8px 0',
                 borderLeft: idx > 0 ? '1px solid var(--border)' : 'none' }}>
@@ -619,7 +627,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
             <HeroStat label="YTD rendement"
               value={<Delta value={ytd.pnlPct} />}
               sub={`${fmtEur(ytd.pnl, {sign:true})} sinds 1 jan`} />
-            <HeroStat label="Dividenden & rente" value={fmtEur(summaries.reduce((s,x)=>s+x.totalIncome,0))} sub={`${summaries.filter(s=>s.currentValueEur>0).length} partijen actief`} />
+            <HeroStat label="Dividenden & rente" value={fmtEur(portfolioSummaries.reduce((s,x)=>s+x.totalIncome,0))} sub={`${portfolioSummaries.filter(s=>s.currentValueEur>0).length} partijen actief`} />
             <HeroStat label="Transactiekosten" value={totalFees > 0 ? `−${fmtEur(totalFees,{decimals:2})}` : '—'}
               sub={`${state.transactions.length} transacties`} valueColor={totalFees > 0 ? 'var(--negative)' : undefined} />
           </div>
@@ -639,13 +647,13 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
                 <div>{renderWidget(wCfg)}</div>
                 {/* Compacte partijrijen direct na de waarde-over-tijd grafiek */}
                 {wCfg.id === 'portfolio_line' && (
-                  <MobilePartyRows summaries={summaries} total={total} onOpenParty={onOpenParty} />
+                  <MobilePartyRows summaries={portfolioSummaries} total={total} onOpenParty={onOpenParty} />
                 )}
               </React.Fragment>
             ))}
           {/* Fallback: als portfolio_line niet actief is, toon rijen bovenaan */}
           {!activeWidgets.find(w => w.id === 'portfolio_line') && (
-            <MobilePartyRows summaries={summaries} total={total} onOpenParty={onOpenParty} />
+            <MobilePartyRows summaries={portfolioSummaries} total={total} onOpenParty={onOpenParty} />
           )}
 
           {/* Koersen bijwerken — onderaan de pagina */}
@@ -974,7 +982,7 @@ function DesktopSpotPanel({ tweaks, setTweaks, spots, state, onUpdateMeesman, on
       <div style={{ marginTop:10, fontSize:10, color:spotStatus?.error?'var(--negative)':'var(--fg-dim)', fontFamily:'var(--ff-mono)' }}>
         {spotStatus?.fetchedAt
           ? `Bijgewerkt ${new Date(spotStatus.fetchedAt).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}`
-          : spotStatus?.error ? spotStatus.error : 'Auto-ververs elke 30 sec · opslag 1x per week'}
+          : spotStatus?.error ? spotStatus.error : 'Auto-ververs elke 30 sec · opslag dagelijks'}
       </div>
     </Card>
   );
@@ -1069,6 +1077,7 @@ function PartyCard({ summary, total, spots, onClick, onQuickAdd, metric = 'pnl_e
           <div style={{ fontSize:11, color:'var(--fg-muted)', marginTop:3 }}>{p.subtitle}</div>
         </div>
         <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+          {p.includeInPortfolio === false && <Pill tone="neutral">Niet in totaal</Pill>}
           <Pill tone="neutral">{p.category}</Pill>
           <button onClick={e => { e.stopPropagation(); onEditParty && onEditParty(); }}
             title="Bewerken" style={{ background:'transparent', border:'none', color:'var(--fg-muted)', cursor:'pointer', fontSize:11, padding:'2px 4px' }}>✎</button>
@@ -1190,6 +1199,7 @@ function AddPartyModal({ open, onClose, onSave, initial, parties = [] }) {
     goal:     p?.goal     || '',
     color:    p?.color    || COLOR_PRESETS[0],
     spotKey:  p?.spotKey  || '',
+    includeInPortfolio: p?.includeInPortfolio !== false,
   });
   const [form, setForm] = React.useState(() => blank(initial));
   React.useEffect(() => { if (open) setForm(blank(initial)); }, [open, initial]);
@@ -1226,6 +1236,7 @@ function AddPartyModal({ open, onClose, onSave, initial, parties = [] }) {
     onSave({ id, name:form.name.trim(), subtitle:form.subtitle.trim(),
       category:finalCategory, unit:form.unit, unitLabel:form.unitLabel||'€',
       goal: +form.goal || 0, color:form.color,
+      includeInPortfolio: form.includeInPortfolio !== false,
       ...(form.unit==='crypto' && form.spotKey ? { spotKey:form.spotKey } : {}),
     });
     onClose();
@@ -1291,6 +1302,18 @@ function AddPartyModal({ open, onClose, onSave, initial, parties = [] }) {
             ))}
           </div>
         </Field>
+        <label style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'11px 12px',
+          border:'1px solid var(--border)', borderRadius:'var(--radius)', background:'var(--surface-2)', cursor:'pointer' }}>
+          <input type="checkbox" checked={form.includeInPortfolio !== false}
+            onChange={e => set('includeInPortfolio', e.target.checked)}
+            style={{ marginTop:2, accentColor:'var(--accent)' }} />
+          <span>
+            <span style={{ display:'block', fontSize:13, fontWeight:600, color:'var(--fg)' }}>Meenemen in totaal en grafieken</span>
+            <span style={{ display:'block', fontSize:11, color:'var(--fg-muted)', marginTop:2 }}>
+              Uitgeschakeld blijft de partij bestaan, maar telt hij niet mee in totale waarde, YTD, verdeling en historische grafieken.
+            </span>
+          </span>
+        </label>
       </div>
       <div style={{ padding:'12px 22px 18px', display:'flex', justifyContent:'space-between', gap:10, borderTop:'1px solid var(--border)', background:'var(--surface-2)' }}>
         <Button variant="ghost" onClick={onClose}>Annuleren</Button>

@@ -1528,6 +1528,7 @@ function MobilePartijenView({ summaries, onOpenParty, onQuickAdd }) {
       return { ...s, years, yearlyEur, cagr };
     })
     .sort((a, b) => (b.currentValueEur || 0) - (a.currentValueEur || 0));
+  const includedEnriched = enriched.filter(s => s.party.includeInPortfolio !== false);
 
   return (
     <div style={{ padding: '16px 14px 100px' }}>
@@ -1547,9 +1548,9 @@ function MobilePartijenView({ summaries, onOpenParty, onQuickAdd }) {
 
       {/* Totaalregel */}
       {(() => {
-        const totalVal  = enriched.reduce((s, x) => s + x.currentValueEur, 0);
-        const totalPnl  = enriched.reduce((s, x) => s + x.pnl, 0);
-        const totalInv  = enriched.reduce((s, x) => s + x.invested, 0);
+        const totalVal  = includedEnriched.reduce((s, x) => s + x.currentValueEur, 0);
+        const totalPnl  = includedEnriched.reduce((s, x) => s + x.pnl, 0);
+        const totalInv  = includedEnriched.reduce((s, x) => s + x.invested, 0);
         const totalPct  = totalInv > 0 ? (totalPnl / totalInv) * 100 : 0;
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px',
@@ -1562,7 +1563,7 @@ function MobilePartijenView({ summaries, onOpenParty, onQuickAdd }) {
                 {fmtEur(totalVal)}
               </div>
               <div style={{ fontSize: 10, color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', marginTop: 2 }}>
-                Gesorteerd op waarde
+                {includedEnriched.length} partijen in totaal
               </div>
             </div>
             <div style={{ textAlign: 'right', fontFamily: 'var(--ff-mono)', fontSize: 13,
@@ -1602,6 +1603,14 @@ function MobilePartijenView({ summaries, onOpenParty, onQuickAdd }) {
                     overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                     {s.party.category || 'Partij'}
                   </span>
+                  {s.party.includeInPortfolio === false && (
+                    <>
+                      <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--fg-dim)', flexShrink:0 }} />
+                      <span style={{ fontSize: 10, color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', whiteSpace:'nowrap' }}>
+                        niet in totaal
+                      </span>
+                    </>
+                  )}
                   <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--fg-dim)', flexShrink:0 }} />
                   <span style={{ fontSize: 10, color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)' }}>
                     {fmtEur(s.currentValueEur, { decimals: 0 })}
