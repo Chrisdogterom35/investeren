@@ -146,6 +146,7 @@ function loadState() {
       if (!parsed.hiddenParties) parsed.hiddenParties = [];
       if (!parsed.tileMetrics)   parsed.tileMetrics   = {};
       if (!parsed.transactions)  parsed.transactions  = [];
+      if (!parsed.deletedTransactionIds) parsed.deletedTransactionIds = {};
       // Migratie: oude customParties + hardcoded PARTIES → één state.parties array
       if (!parsed.parties || !parsed.parties.length) {
         const ids = new Set();
@@ -178,6 +179,7 @@ function loadState() {
   // Eerste keer: alle defaults uit code (zal direct naar Supabase gesyncd worden)
   return {
     transactions:       [],
+    deletedTransactionIds: {},
     widgets:            DEFAULT_WIDGETS.map(w => ({ ...w })),
     parties:            [...PARTIES],
     hiddenParties:      [],

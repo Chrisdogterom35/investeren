@@ -172,10 +172,20 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
   React.useEffect(() => { if (addTrigger > 0) openAdd(); }, [addTrigger]);
   const saveTx   = (tx) => setState(s => {
+    const stampedTx = { ...tx, updatedAt: new Date().toISOString() };
     const exists = s.transactions.some(t => t.id === tx.id);
-    return { ...s, transactions: exists ? s.transactions.map(t => t.id === tx.id ? tx : t) : [...s.transactions, tx] };
+    const { [tx.id]: _deleted, ...deletedTransactionIds } = s.deletedTransactionIds || {};
+    return {
+      ...s,
+      transactions: exists ? s.transactions.map(t => t.id === tx.id ? stampedTx : t) : [...s.transactions, stampedTx],
+      deletedTransactionIds,
+    };
   });
-  const deleteTx = (id) => setState(s => ({ ...s, transactions: s.transactions.filter(t => t.id !== id) }));
+  const deleteTx = (id) => setState(s => ({
+    ...s,
+    transactions: s.transactions.filter(t => t.id !== id),
+    deletedTransactionIds: { ...(s.deletedTransactionIds || {}), [id]: new Date().toISOString() },
+  }));
 
   const recentTxs = React.useMemo(
     () => [...state.transactions].sort((a,b) => b.date.localeCompare(a.date)).slice(0, 10),
@@ -238,11 +248,12 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
 
   const saveCustomParty = React.useCallback(p => {
     setState(s => {
+      const stampedParty = { ...p, updatedAt: new Date().toISOString() };
       const list = (s.parties && s.parties.length) ? s.parties : [...PARTIES];
       const exists = list.some(x => x.id === p.id);
       return { ...s, parties: exists
-        ? list.map(x => x.id === p.id ? { ...x, ...p } : x)
-        : [...list, p] };
+        ? list.map(x => x.id === p.id ? { ...x, ...stampedParty } : x)
+        : [...list, stampedParty] };
     });
   }, [setState]);
 

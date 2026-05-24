@@ -46,9 +46,27 @@ function loadSupabaseConfig() {
   return { ...SUPABASE_DEFAULTS };
 }
 
+let supabaseClientCache = { key: null, client: null };
+
 function getSupabaseClient(cfg) {
   if (!cfg?.url || !cfg?.anonKey) return null;
-  try { return window.supabase?.createClient(cfg.url.trim(), cfg.anonKey.trim()); }
+  const url = cfg.url.trim();
+  const anonKey = cfg.anonKey.trim();
+  const key = `${url}|${anonKey}`;
+  if (supabaseClientCache.key === key && supabaseClientCache.client) {
+    return supabaseClientCache.client;
+  }
+  try {
+    const client = window.supabase?.createClient(url, anonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    });
+    supabaseClientCache = { key, client };
+    return client;
+  }
   catch { return null; }
 }
 
@@ -83,8 +101,10 @@ async function supabaseSelectAll(makeQuery, pageSize = 1000) {
 }
 
 // camelCase <-> snake_case helpers voor de transactions tabel
-function txToRow(t) {
-  return {
+let transactionUpdatedAtColumnAvailable = true;
+
+function txToRow(t, includeUpdatedAt = true) {
+  const row = {
     id:             t.id,
     party:          t.party,
     type:           t.type,
@@ -101,6 +121,8 @@ function txToRow(t) {
     t212_id:        t._t212Id      || null,
     value_eur:      t.valueEur     != null ? +t.valueEur     : null,
   };
+  if (includeUpdatedAt && t.updatedAt) row.updated_at = t.updatedAt;
+  return row;
 }
 
 function rowToTx(r) {
@@ -116,6 +138,7 @@ function rowToTx(r) {
   if (r.instrument)             t.instrument   = r.instrument;
   if (r.t212_id)                t._t212Id      = r.t212_id;
   if (r.value_eur      != null) t.valueEur     = +r.value_eur;
+  if (r.updated_at || r.created_at) t.updatedAt = r.updated_at || r.created_at;
   return t;
 }
 
@@ -150,6 +173,38 @@ function mergeById(local = [], remote = []) {
   (local || []).forEach(item => item?.id && m.set(item.id, item));
   (remote || []).forEach(item => item?.id && m.set(item.id, item));
   return [...m.values()];
+}
+
+function updatedAtMs(item) {
+  const t = Date.parse(item?.updatedAt || item?.updated_at || '');
+  return Number.isFinite(t) ? t : 0;
+}
+
+function mergeByNewest(...lists) {
+  const m = new Map();
+  lists.forEach(list => (list || []).forEach(item => {
+    if (!item?.id) return;
+    const current = m.get(item.id);
+    if (!current || updatedAtMs(item) >= updatedAtMs(current)) {
+      m.set(item.id, item);
+    }
+  }));
+  return [...m.values()];
+}
+
+function mergeDeletedIds(...sources) {
+  const merged = {};
+  sources.forEach(source => Object.entries(source || {}).forEach(([id, deletedAt]) => {
+    if (!merged[id] || updatedAtMs({ updatedAt: deletedAt }) >= updatedAtMs({ updatedAt: merged[id] })) {
+      merged[id] = deletedAt;
+    }
+  }));
+  return merged;
+}
+
+function isDeletedByTombstone(item, deletedIds = {}) {
+  const deletedAt = deletedIds[item?.id];
+  return deletedAt && updatedAtMs({ updatedAt: deletedAt }) >= updatedAtMs(item);
 }
 
 function normalizeParties(parties = []) {
@@ -236,7 +291,7 @@ async function supabaseSaveSettings(client, state) {
     .maybeSingle();
   const currentParties = current?.data?.parties;
   if (Array.isArray(currentParties) && currentParties.length) {
-    settings.parties = normalizeParties(mergeById(currentParties, settings.parties || []));
+    settings.parties = normalizeParties(mergeByNewest(currentParties, settings.parties || []));
   }
   const { error } = await client
     .from('portfolio')
@@ -244,15 +299,30 @@ async function supabaseSaveSettings(client, state) {
   if (error) throw new Error(error.message);
 }
 
-async function supabaseSyncTransactions(client, transactions = []) {
-  if (!transactions.length) return;
-  const rows = transactions
-    .filter(t => t.id && t.party && t.type && t.date && !isIgnoredLegacyTransaction(t))
-    .map(txToRow);
-  for (let i = 0; i < rows.length; i += 200) {
+async function supabaseSyncTransactions(client, transactions = [], deletedTransactionIds = {}) {
+  const txs = transactions
+    .filter(t => t.id && t.party && t.type && t.date && !isIgnoredLegacyTransaction(t));
+  for (let i = 0; i < txs.length; i += 200) {
+    const chunk = txs.slice(i, i + 200);
+    const rows = chunk.map(t => txToRow(t, transactionUpdatedAtColumnAvailable));
+    let { error } = await client
+      .from('transactions')
+      .upsert(rows, { onConflict: 'id' });
+    if (error?.code === 'PGRST204' && String(error.message || '').includes('updated_at')) {
+      transactionUpdatedAtColumnAvailable = false;
+      const retryRows = chunk.map(t => txToRow(t, false));
+      ({ error } = await client
+        .from('transactions')
+        .upsert(retryRows, { onConflict: 'id' }));
+    }
+    if (error) throw new Error(error.message);
+  }
+  const deletedIds = Object.keys(deletedTransactionIds || {});
+  for (let i = 0; i < deletedIds.length; i += 200) {
     const { error } = await client
       .from('transactions')
-      .upsert(rows.slice(i, i + 200), { onConflict: 'id' });
+      .delete()
+      .in('id', deletedIds.slice(i, i + 200));
     if (error) throw new Error(error.message);
   }
 }
@@ -507,16 +577,21 @@ function App() {
       const meesman = normalizeMeesmanHistory(
         mergePriceHistory(s.meesmanNavHistory, remote.meesmanNavHistory)
       );
-      const remoteTxs = (remote.transactions || [])
+      const mergedDeletedTransactionIds = mergeDeletedIds(remote.deletedTransactionIds, s.deletedTransactionIds);
+      const remoteTxs = normalizeTransactions(remote.transactions || [])
+        .filter(t => !isDeletedByTombstone(t, mergedDeletedTransactionIds));
+      const mergedTxs = normalizeTransactions(mergeByNewest(remoteTxs, s.transactions || [])
+        .filter(t => !isDeletedByTombstone(t, mergedDeletedTransactionIds)))
         .sort((a, b) => a.date.localeCompare(b.date));
 
-      const mergedParties = normalizeParties(mergeById(s.parties, remote.parties));
+      const mergedParties = normalizeParties(mergeByNewest(remote.parties, s.parties));
       const mergedTweaks = { ...(s.tweaks || {}), ...(remote.tweaks || {}) };
 
       return {
         ...s,
         ...remote,
-        transactions:      remoteTxs,
+        transactions:      mergedTxs,
+        deletedTransactionIds: mergedDeletedTransactionIds,
         parties:           mergedParties.length ? mergedParties : normalizeParties(s.parties || []),
         tweaks:            mergedTweaks,
         meesmanNavEur:     meesman.currentNav,
@@ -576,19 +651,50 @@ function App() {
   // Refs zodat de flush-handler altijd de laatste state ziet
   const stateRef       = React.useRef(state);
   const pendingSaveRef = React.useRef(false);
+  const saveQueueRef   = React.useRef(Promise.resolve());
+  const skipNextAutosaveRef = React.useRef(false);
   React.useEffect(() => { stateRef.current = state; }, [state]);
 
-  const saveSnapshotToSupabase = React.useCallback(snapshot => {
+  const runSaveSnapshotToSupabase = React.useCallback(snapshot => {
     const client = getSupabaseClient(supabaseConfig);
     if (!client) return Promise.resolve(false);
     const jobs = [supabaseSaveSettings(client, snapshot)];
-    if (transactionsLoadedRef.current) {
-      jobs.push(supabaseSyncTransactions(client, snapshot.transactions || []));
-    }
+    jobs.push(supabaseSyncTransactions(client, snapshot.transactions || [], snapshot.deletedTransactionIds || {}));
     return Promise.all(jobs)
       .then(() => setSyncStatus(s => ({ ...s, error: null, syncedAt: new Date().toISOString() })))
       .then(() => true);
   }, [supabaseConfig]);
+
+  const saveSnapshotToSupabase = React.useCallback(snapshot => {
+    const job = saveQueueRef.current
+      .catch(() => {})
+      .then(() => runSaveSnapshotToSupabase(snapshot));
+    saveQueueRef.current = job;
+    return job;
+  }, [runSaveSnapshotToSupabase]);
+
+  const setSyncedState = React.useCallback(updater => {
+    let shouldSave = false;
+    setState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (next !== prev && !shouldSave) {
+        shouldSave = true;
+        skipNextAutosaveRef.current = true;
+        pendingSaveRef.current = true;
+        clearTimeout(syncTimerRef.current);
+        Promise.resolve().then(() => {
+          pendingSaveRef.current = false;
+          return saveSnapshotToSupabase(next)
+            .catch(e => {
+              pendingSaveRef.current = true;
+              setSyncStatus(s => ({ ...s, error: e.message }));
+              return false;
+            });
+        });
+      }
+      return next;
+    });
+  }, [saveSnapshotToSupabase]);
 
   // Save NU (gebruikt bij pagehide/visibilitychange/focus).
   const flushSave = React.useCallback(() => {
@@ -626,6 +732,10 @@ function App() {
     const client = getSupabaseClient(supabaseConfig);
     if (!client) return;
     if (!supabaseLoadedRef.current) return; // wacht op eerste load zodat we niets overschrijven
+    if (skipNextAutosaveRef.current) {
+      skipNextAutosaveRef.current = false;
+      return;
+    }
     pendingSaveRef.current = true;
     clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
@@ -794,12 +904,20 @@ function App() {
           return qty > 0 && price > 0;
         })
         .map(mapT212Order);
-      if (newTxs.length > 0) setState(s => ({ ...s, transactions: [...s.transactions, ...newTxs] }));
+      if (newTxs.length > 0) {
+        const now = new Date().toISOString();
+        setSyncedState(s => {
+          const stamped = newTxs.map(tx => ({ ...tx, updatedAt: now }));
+          const deletedTransactionIds = { ...(s.deletedTransactionIds || {}) };
+          stamped.forEach(tx => { delete deletedTransactionIds[tx.id]; });
+          return { ...s, transactions: [...s.transactions, ...stamped], deletedTransactionIds };
+        });
+      }
       setT212Status({ loading: false, error: null, imported: newTxs.length, done: true });
     } catch (e) {
       setT212Status({ loading: false, error: e.message || 'Importfout', imported: 0, done: false });
     }
-  }, [tweaks.t212ApiKey, tweaks.t212Mode, state.transactions]);
+  }, [tweaks.t212ApiKey, tweaks.t212Mode, state.transactions, setSyncedState]);
 
   React.useEffect(() => {
     refreshSpot();
@@ -814,11 +932,17 @@ function App() {
   }, []);
 
   const deleteT212Txs = React.useCallback(() => {
-    const count = state.transactions.filter(t => t.party === 'trading212').length;
+    const ids = state.transactions.filter(t => t.party === 'trading212').map(t => t.id);
+    const count = ids.length;
     if (!confirm(`${count} Trading 212 transacties verwijderen?`)) return;
-    setState(s => ({ ...s, transactions: s.transactions.filter(t => t.party !== 'trading212') }));
+    setSyncedState(s => {
+      const deletedAt = new Date().toISOString();
+      const deletedTransactionIds = { ...(s.deletedTransactionIds || {}) };
+      ids.forEach(id => { deletedTransactionIds[id] = deletedAt; });
+      return { ...s, transactions: s.transactions.filter(t => t.party !== 'trading212'), deletedTransactionIds };
+    });
     setT212Status({ loading: false, error: null, imported: 0, done: false });
-  }, [state.transactions]);
+  }, [state.transactions, setSyncedState]);
 
   const syncNow = React.useCallback(async () => {
     const client = getSupabaseClient(supabaseConfig);
@@ -827,7 +951,7 @@ function App() {
     try {
       await Promise.all([
         supabaseSaveSettings(client, state),
-        supabaseSyncTransactions(client, state.transactions || []),
+        supabaseSyncTransactions(client, state.transactions || [], state.deletedTransactionIds || {}),
       ]);
       setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
     } catch (e) {
@@ -867,13 +991,14 @@ function App() {
         delete data.customParties;
         if (!data.hiddenParties) data.hiddenParties = [];
         if (!data.tileMetrics)   data.tileMetrics   = {};
+        if (!data.deletedTransactionIds) data.deletedTransactionIds = {};
         if (!data.tweaks)        data.tweaks        = { ...(window.TWEAKS || {}) };
-        setState(data);
+        setSyncedState(data);
         setImportMsg({ ok: true, text: `${data.transactions.length} transacties geladen` });
       } catch { setImportMsg({ ok: false, text: 'Kon bestand niet lezen — geldig JSON?' }); }
     };
     reader.readAsText(file);
-  }, []);
+  }, [setSyncedState]);
 
   // spots: live prijzen + historische reeksen uit state/Supabase
   const spots = React.useMemo(() => ({
@@ -911,17 +1036,25 @@ function App() {
   const mobileDetailParty = mobileDetailPartyId ? allParties.find(p => p.id === mobileDetailPartyId) : null;
   const mobileDetailSummary = mobileDetailParty ? summaries.find(s => s.party.id === mobileDetailParty.id) : null;
   const saveMobileTx = React.useCallback(tx => {
-    setState(s => {
+    const updatedAt = new Date().toISOString();
+    const stampedTx = { ...tx, updatedAt };
+    setSyncedState(s => {
       const exists = s.transactions.some(t => t.id === tx.id);
+      const { [tx.id]: _deleted, ...deletedTransactionIds } = s.deletedTransactionIds || {};
       return { ...s, transactions: exists
-        ? s.transactions.map(t => t.id === tx.id ? tx : t)
-        : [...s.transactions, tx] };
+        ? s.transactions.map(t => t.id === tx.id ? stampedTx : t)
+        : [...s.transactions, stampedTx],
+        deletedTransactionIds };
     });
-  }, []);
+  }, [setSyncedState]);
   const deleteMobileTx = React.useCallback(id => {
     if (!confirm('Transactie verwijderen?')) return;
-    setState(s => ({ ...s, transactions: s.transactions.filter(t => t.id !== id) }));
-  }, []);
+    setSyncedState(s => ({
+      ...s,
+      transactions: s.transactions.filter(t => t.id !== id),
+      deletedTransactionIds: { ...(s.deletedTransactionIds || {}), [id]: new Date().toISOString() },
+    }));
+  }, [setSyncedState]);
   const openMobileTx = React.useCallback((preset = null) => {
     setMobileEditingTx(null);
     setMobileTxPreset(preset);
@@ -1030,7 +1163,7 @@ function App() {
       {isMobile ? (
         <>
           {mobileTab === 'home' && (
-            <Dashboard state={state} setState={setState}
+            <Dashboard state={state} setState={setSyncedState}
               tweaks={displayTweaks} setTweaks={updateTweaks}
               spotStatus={spotStatus} onRefreshSpot={refreshSpot}
               addTrigger={mobileAddTrigger} isMobile={true}
@@ -1044,19 +1177,19 @@ function App() {
             />
           )}
           {mobileTab === 'transacties' && (
-            <TransactionsTab state={state} setState={setState} spots={spots} />
+            <TransactionsTab state={state} setState={setSyncedState} spots={spots} />
           )}
         </>
       ) : (
         <>
           {activeTab === 'dashboard' && (
-            <Dashboard state={state} setState={setState}
+            <Dashboard state={state} setState={setSyncedState}
               tweaks={displayTweaks} setTweaks={updateTweaks}
               spotStatus={spotStatus} onRefreshSpot={refreshSpot}
               onUpdateMeesman={updateMeesmanNav} />
           )}
           {activeTab === 'transacties' && (
-            <TransactionsTab state={state} setState={setState} spots={spots} />
+            <TransactionsTab state={state} setState={setSyncedState} spots={spots} />
           )}
           {activeTab === 'pensioen' && (
             <PensionTab summaries={summaries} />

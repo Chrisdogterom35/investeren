@@ -25,14 +25,21 @@ function TransactionsTab({ state, setState, spots }) {
   }), [sorted, filterParty, filterType]);
 
   const saveTx = tx => setState(s => {
+    const stampedTx = { ...tx, updatedAt: new Date().toISOString() };
     const exists = s.transactions.some(t => t.id === tx.id);
+    const { [tx.id]: _deleted, ...deletedTransactionIds } = s.deletedTransactionIds || {};
     return { ...s, transactions: exists
-      ? s.transactions.map(t => t.id === tx.id ? tx : t)
-      : [...s.transactions, tx] };
+      ? s.transactions.map(t => t.id === tx.id ? stampedTx : t)
+      : [...s.transactions, stampedTx],
+      deletedTransactionIds };
   });
   const deleteTx = id => {
     if (!confirm('Transactie verwijderen?')) return;
-    setState(s => ({ ...s, transactions: s.transactions.filter(t => t.id !== id) }));
+    setState(s => ({
+      ...s,
+      transactions: s.transactions.filter(t => t.id !== id),
+      deletedTransactionIds: { ...(s.deletedTransactionIds || {}), [id]: new Date().toISOString() },
+    }));
   };
   const openEdit = tx => { setEditingTx(tx); setPreset(null); setModalOpen(true); };
   const openAdd  = (p = null) => { setEditingTx(null); setPreset(p); setModalOpen(true); };
