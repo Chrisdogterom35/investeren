@@ -46,9 +46,10 @@ function TransactionModal({ open, onClose, onSave, preset, parties, initial, tra
     amountEur:   i?.amountEur   ?? '',
     quantity:    i?.quantity    ?? '',
     unitPriceEur:i?.unitPriceEur ?? '',
+    orderValueEur:i?.amountEur   ?? '',
     valueEur:    i?.valueEur    ?? '',
     metalType:   i?.metalType   || 'goud',
-    silverUnit:  i?.silverUnit  || 'ounce',
+    silverUnit:  i?.silverUnit  || 'gram',
     goldUnit:    i?.goldUnit    || 'gram',
     instrument:  i?.instrument  || '',
     feeMode:     'eur',
@@ -67,8 +68,36 @@ function TransactionModal({ open, onClose, onSave, preset, parties, initial, tra
   const isMixed   = !!party.isMixed;
   const isT212    = party.id === 'trading212';
   const isUnitParty = party.unit === 'part'; // participaties / aandelen (use unitPriceEur for waardering)
+  const isGoldrepublicOrder = isMixed && ['koop', 'verkoop'].includes(form.type);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const calcUnitPriceFromOrder = (quantity, orderValue) => {
+    const qty = +quantity || 0;
+    const value = +orderValue || 0;
+    return qty > 0 && value > 0 ? +(value / qty).toFixed(6) : null;
+  };
+  const setQuantity = v => setForm(f => {
+    const next = { ...f, quantity: v };
+    if (party.isMixed && ['koop', 'verkoop'].includes(f.type) && f.orderValueEur !== '') {
+      const px = calcUnitPriceFromOrder(v, f.orderValueEur);
+      if (px != null) next.unitPriceEur = px;
+    }
+    return next;
+  });
+  const setOrderValue = v => setForm(f => {
+    const next = { ...f, orderValueEur: v };
+    const px = calcUnitPriceFromOrder(f.quantity, v);
+    if (px != null) next.unitPriceEur = px;
+    return next;
+  });
+  const setUnitPrice = v => setForm(f => {
+    const next = { ...f, unitPriceEur: v };
+    if (party.isMixed && ['koop', 'verkoop'].includes(f.type) && f.quantity !== '') {
+      const total = (+f.quantity || 0) * (+v || 0);
+      next.orderValueEur = total > 0 ? +total.toFixed(2) : '';
+    }
+    return next;
+  });
 
   // What fields are required for this transaction type?
   const needs = (() => {
@@ -87,13 +116,22 @@ function TransactionModal({ open, onClose, onSave, preset, parties, initial, tra
   })();
 
   // Compute fee EUR from form (convert % → EUR if needed)
-  const orderValue = (+form.quantity || 0) * (+form.unitPriceEur || 0);
+  const calculatedUnitPriceEur = isGoldrepublicOrder
+    ? calcUnitPriceFromOrder(form.quantity, form.orderValueEur)
+    : null;
+  const effectiveUnitPriceEur = calculatedUnitPriceEur ?? (+form.unitPriceEur || 0);
+  const orderValue = (+form.quantity || 0) * effectiveUnitPriceEur;
   const feeEurCalc = form.feeMode === 'pct' && orderValue > 0
     ? (orderValue * (+form.feeEur || 0)) / 100
     : +form.feeEur || 0;
 
   const valid = form.party && form.type && form.date
-    && needs.every(n => form[n] !== '' && !Number.isNaN(+form[n]));
+    && needs.every(n => {
+      const value = n === 'unitPriceEur' && calculatedUnitPriceEur != null
+        ? calculatedUnitPriceEur
+        : form[n];
+      return value !== '' && !Number.isNaN(+value);
+    });
 
   // Unique instruments used in T212 transactions, sorted alphabetically
   const t212Instruments = React.useMemo(() => {
@@ -113,7 +151,14 @@ function TransactionModal({ open, onClose, onSave, preset, parties, initial, tra
       if (form.metalType === 'zilver') tx.silverUnit = form.silverUnit;
       if (form.metalType === 'goud')   tx.goldUnit   = form.goldUnit;
     }
-    for (const k of needs) tx[k] = +form[k];
+    for (const k of needs) {
+      tx[k] = k === 'unitPriceEur' && calculatedUnitPriceEur != null
+        ? +calculatedUnitPriceEur
+        : +form[k];
+    }
+    if (isGoldrepublicOrder && +form.orderValueEur > 0) {
+      tx.amountEur = +form.orderValueEur;
+    }
     if (feeEurCalc > 0) tx.feeEur = +feeEurCalc.toFixed(4);
     onSave(tx);
     onClose();
@@ -252,14 +297,20 @@ function TransactionModal({ open, onClose, onSave, preset, parties, initial, tra
         {/* koop / verkoop / cashback / dividend — quantity + unit price */}
         {['koop','verkoop','cashback','dividend'].includes(form.type) && (
           <>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <div style={{ display:'grid', gridTemplateColumns:isGoldrepublicOrder ? 'repeat(auto-fit, minmax(150px, 1fr))' : '1fr 1fr', gap:12 }}>
               <Field label={`Aantal (${unitLabel})`}>
                 <Input type="number" step="0.0001" placeholder="0" value={form.quantity}
-                  onChange={e => set('quantity', e.target.value)} />
+                  onChange={e => setQuantity(e.target.value)} />
               </Field>
+              {isGoldrepublicOrder && (
+                <Field label="Orderwaarde (€)">
+                  <Input type="number" step="0.01" placeholder="0,00" value={form.orderValueEur}
+                    onChange={e => setOrderValue(e.target.value)} />
+                </Field>
+              )}
               <Field label={`Prijs per ${unitLabel} (€)`}>
-                <Input type="number" step="0.01" placeholder="0,00" value={form.unitPriceEur}
-                  onChange={e => set('unitPriceEur', e.target.value)} />
+                <Input type="number" step="0.0001" placeholder="0,00" value={form.unitPriceEur}
+                  onChange={e => setUnitPrice(e.target.value)} />
               </Field>
             </div>
             {/* Order total preview */}
