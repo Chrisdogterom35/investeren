@@ -131,7 +131,7 @@ function normalizeMeesmanHistory(history = []) {
     MEESMAN_NAV_SEED_HISTORY,
     (history || []).filter(h => h.date <= officialLatest.date || +h.nav !== 100.4)
   );
-  const current = normalized.find(h => h.date === officialLatest.date) || officialLatest;
+  const current = normalized[normalized.length - 1] || officialLatest;
   return { history: normalized, currentNav: current.nav };
 }
 

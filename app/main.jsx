@@ -327,6 +327,32 @@ async function supabaseSyncTransactions(client, transactions = [], deletedTransa
   }
 }
 
+async function supabaseUpsertAssetPriceRows(client, rows = []) {
+  if (!client) return false;
+  const cleanRows = rows
+    .filter(r => r?.asset && r.date && +r.nav > 0)
+    .map(r => ({
+      asset: r.asset,
+      date: r.date,
+      nav: +r.nav,
+      source: r.source || 'app',
+      updated_at: r.updated_at || new Date().toISOString(),
+    }));
+  if (!cleanRows.length) return false;
+
+  let { error } = await client
+    .from('asset_price_history')
+    .upsert(cleanRows, { onConflict: 'asset,date' });
+  if (error?.code === 'PGRST204' && /source|updated_at/i.test(error.message || '')) {
+    const legacyRows = cleanRows.map(({ source, updated_at, ...row }) => row);
+    ({ error } = await client
+      .from('asset_price_history')
+      .upsert(legacyRows, { onConflict: 'asset,date' }));
+  }
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 // ── Spot price fetchers ───────────────────────────────────────
 async function fetchSpotPrices() {
   const [goldRes, silverRes, fxRes] = await Promise.all([
@@ -433,7 +459,10 @@ async function fetchMeesmanLatestFromWebsite() {
   for (const wrap of wrappers) {
     try {
       const html = await fetch(wrap(url)).then(r => r.text());
-      const m = html.match(/Laatste koers[\s\S]{0,160}?€\s*([0-9.,]+)[\s\S]{0,80}?\((\d{2}-\d{2}-\d{4})\)/i);
+      const normalizedHtml = html
+        .replace(/&nbsp;|&#160;|&#xA0;/gi, ' ')
+        .replace(/&#x20AC;|&#8364;|&euro;/gi, '€');
+      const m = normalizedHtml.match(/Laatste\s+koers[\s\S]{0,360}?(?:€|EUR)\s*([0-9.,]+)[\s\S]{0,160}?\((\d{2}-\d{2}-\d{4})\)/i);
       if (!m) continue;
       const nav = +m[1].replace(/\./g, '').replace(',', '.');
       const [dd, mm, yyyy] = m[2].split('-');
@@ -441,6 +470,21 @@ async function fetchMeesmanLatestFromWebsite() {
     } catch {}
   }
   throw new Error('Meesman website niet bereikbaar');
+}
+
+async function refreshPricesViaServer() {
+  const res = await fetch(`/api/update-weekly-prices?ts=${Date.now()}`, {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  });
+  const type = res.headers.get('content-type') || '';
+  const body = type.includes('application/json') ? await res.json().catch(() => null) : null;
+  if (!res.ok || !body?.ok) {
+    const msg = body?.error || body?.errors?.join(' · ') || `Koers-update HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return body;
 }
 
 // Haal 2 jaar Meesman NAV-geschiedenis op via Yahoo Finance (0P0001IJJX.F)
@@ -808,28 +852,68 @@ function App() {
 
   const displayTweaks = React.useMemo(() => ({ ...tweaks, ...liveSpot }), [tweaks, liveSpot]);
 
-  const refreshSpot = React.useCallback(async () => {
+  const refreshSpot = React.useCallback(async (options = {}) => {
+    const manual = options?.manual === true || options?.type === 'click';
     setSpotStatus(s => ({ ...s, loading: true, error: null }));
-    const [metals, crypto] = await Promise.allSettled([
+
+    if (manual) {
+      try {
+        const serverResult = await refreshPricesViaServer();
+        await reloadSupabase();
+        const warnings = (serverResult.warnings || []).filter(Boolean);
+        setSpotStatus({
+          loading: false,
+          error: warnings.length ? warnings.join(' · ') : null,
+          fetchedAt: new Date().toISOString(),
+        });
+        return;
+      } catch (e) {
+        console.warn('[prijzen] server-refresh mislukt, probeer browser fallback:', e.message);
+      }
+    }
+
+    const [metals, crypto, meesman] = await Promise.allSettled([
       fetchSpotPrices(),
       fetchCryptoPrices(),
+      manual ? fetchMeesmanLatestFromWebsite() : Promise.resolve(null),
     ]);
     const updates = {};
+    const priceRows = [];
+    const today = new Date().toISOString().slice(0, 10);
     if (metals.status === 'fulfilled') {
       updates.goldSpotEurPerGram    = +metals.value.goldSpotEurPerGram.toFixed(2);
       updates.silverSpotEurPerOunce = +metals.value.silverSpotEurPerOunce.toFixed(2);
+      priceRows.push(
+        { asset: 'gold_eur_per_gram', date: today, nav: +metals.value.goldSpotEurPerGram.toFixed(8), source: 'browser refresh' },
+        { asset: 'silver_eur_per_ounce', date: today, nav: +metals.value.silverSpotEurPerOunce.toFixed(8), source: 'browser refresh' },
+      );
     }
     if (crypto.status === 'fulfilled') {
       updates.btcSpotEur  = +crypto.value.btcSpotEur.toFixed(2);
       updates.ethSpotEur  = +crypto.value.ethSpotEur.toFixed(2);
       updates.paxgSpotEur = +crypto.value.paxgSpotEur.toFixed(2);
+      priceRows.push(
+        { asset: 'btc_eur', date: today, nav: +crypto.value.btcSpotEur.toFixed(8), source: 'browser refresh' },
+        { asset: 'eth_eur', date: today, nav: +crypto.value.ethSpotEur.toFixed(8), source: 'browser refresh' },
+        { asset: 'paxg_eur', date: today, nav: +crypto.value.paxgSpotEur.toFixed(8), source: 'browser refresh' },
+      );
     }
-    if (Object.keys(updates).length) {
+    const meesmanEntry = meesman.status === 'fulfilled' ? meesman.value?.meesmanNavHistory?.[0] : null;
+    if (manual && meesmanEntry?.date && +meesmanEntry.nav > 0) {
+      priceRows.push({
+        asset: 'meesman_aandelen_wereldwijd_totaal',
+        date: meesmanEntry.date,
+        nav: +meesmanEntry.nav,
+        source: 'meesman.nl',
+      });
+    }
+    if (Object.keys(updates).length || (manual && meesmanEntry?.date && +meesmanEntry.nav > 0)) {
       // Sla op in liveSpot (directe weergave) én tweaks (persistent na refresh)
-      setLiveSpot(prev => ({ ...prev, ...updates }));
-      updateTweaks(tw => ({ ...tw, ...updates }));
+      if (Object.keys(updates).length) {
+        setLiveSpot(prev => ({ ...prev, ...updates }));
+        updateTweaks(tw => ({ ...tw, ...updates }));
+      }
       // Sla vandaag's spot op in de history voor de grafiek
-      const today = new Date().toISOString().slice(0, 10);
       setState(s => {
         const hist = {};
         if (updates.goldSpotEurPerGram)    hist.goldHistory   = appendToHistory(s.goldHistory,   today, updates.goldSpotEurPerGram);
@@ -837,27 +921,59 @@ function App() {
         if (updates.btcSpotEur)            hist.btcHistory    = appendToHistory(s.btcHistory,    today, updates.btcSpotEur);
         if (updates.ethSpotEur)            hist.ethHistory    = appendToHistory(s.ethHistory,    today, updates.ethSpotEur);
         if (updates.paxgSpotEur)           hist.paxgHistory   = appendToHistory(s.paxgHistory,   today, updates.paxgSpotEur);
+        if (manual && meesmanEntry?.date && +meesmanEntry.nav > 0) {
+          const normalized = normalizeMeesmanHistory(mergePriceHistory(s.meesmanNavHistory, [meesmanEntry]));
+          hist.meesmanNavHistory = normalized.history;
+          hist.meesmanNavEur = normalized.currentNav;
+        }
         return Object.keys(hist).length ? { ...s, ...hist } : s;
       });
+    }
+
+    let priceSaveError = null;
+    if (manual && priceRows.length) {
+      const client = getSupabaseClient(supabaseConfig);
+      if (client) {
+        try {
+          await supabaseUpsertAssetPriceRows(client, priceRows);
+          await reloadSupabase();
+        } catch (e) {
+          priceSaveError = `Koersopslag: ${e.message}`;
+          setSyncStatus(s => ({ ...s, error: e.message }));
+        }
+      }
     }
 
     const errors = [
       metals.status === 'rejected' ? `Goud/zilver: ${metals.reason?.message}` : null,
       crypto.status === 'rejected' ? `Crypto: ${crypto.reason?.message}`       : null,
+      manual && meesman.status === 'rejected' ? `Meesman: ${meesman.reason?.message}` : null,
+      priceSaveError,
     ].filter(Boolean);
 
     setSpotStatus({ loading: false, error: errors.length ? errors.join(' · ') : null, fetchedAt: new Date().toISOString() });
-  }, [updateTweaks]);
+  }, [updateTweaks, supabaseConfig, reloadSupabase]);
 
   // Meesman NAV handmatig bijwerken
   const updateMeesmanNav = React.useCallback((nav) => {
     const today = new Date().toISOString().slice(0, 10);
-    setState(s => ({
-      ...s,
-      meesmanNavEur:     +nav,
-      meesmanNavHistory: appendToHistory(s.meesmanNavHistory || [], today, +nav),
-    }));
-  }, []);
+    const entry = { date: today, nav: +nav };
+    setSyncedState(s => {
+      const normalized = normalizeMeesmanHistory(mergePriceHistory(s.meesmanNavHistory, [entry]));
+      return { ...s, meesmanNavEur: normalized.currentNav, meesmanNavHistory: normalized.history };
+    });
+    const client = getSupabaseClient(supabaseConfig);
+    if (client) {
+      supabaseUpsertAssetPriceRows(client, [{
+        asset: 'meesman_aandelen_wereldwijd_totaal',
+        date: today,
+        nav: +nav,
+        source: 'handmatig',
+      }])
+        .then(() => reloadSupabase())
+        .catch(e => setSyncStatus(s => ({ ...s, error: e.message })));
+    }
+  }, [setSyncedState, supabaseConfig, reloadSupabase]);
 
   // Haal historische Meesman data op via Yahoo Finance
   const [meesmanHistStatus, setMeesmanHistStatus] = React.useState({ loading: false, error: null, done: false });
