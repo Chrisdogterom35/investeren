@@ -22,6 +22,8 @@ const TABS = [
 const OZ_TO_GRAM     = 31.1034768;
 const T212_PROXY        = 'https://corsproxy.io/?url=';
 const SUPABASE_CFG_KEY  = 'investeringen-supabase-v1';
+const SUPABASE_CFG_VERSION = 2;
+const SUPABASE_PULL_INTERVAL_MS = 8000;
 
 // ── Price history helper ──────────────────────────────────────
 function appendToHistory(existing, date, price) {
@@ -34,6 +36,7 @@ function appendToHistory(existing, date, price) {
 
 // ── Supabase helpers ──────────────────────────────────────────
 const SUPABASE_DEFAULTS = {
+  configVersion: SUPABASE_CFG_VERSION,
   url:     'https://xlmbpohjlcwjubgiyjaw.supabase.co',
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsbWJwb2hqbGN3anViZ2l5amF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjIyODksImV4cCI6MjA5MzYzODI4OX0.BXbY5_stirCdFLuXleBHu1VouYm1cguVZd3bjkygHlo',
 };
@@ -41,7 +44,7 @@ const SUPABASE_DEFAULTS = {
 function loadSupabaseConfig() {
   try {
     const stored = JSON.parse(localStorage.getItem(SUPABASE_CFG_KEY));
-    if (stored?.url && stored?.anonKey) return stored;
+    if (stored?.configVersion === SUPABASE_CFG_VERSION && stored?.url && stored?.anonKey) return stored;
   } catch {}
   return { ...SUPABASE_DEFAULTS };
 }
@@ -587,6 +590,10 @@ function App() {
   const syncTimerRef = React.useRef(null);
   const supabaseLoadedRef = React.useRef(false);
   const transactionsLoadedRef = React.useRef(false);
+  const stateRef       = React.useRef(state);
+  const pendingSaveRef = React.useRef(false);
+  const saveQueueRef   = React.useRef(Promise.resolve());
+  const skipNextAutosaveRef = React.useRef(false);
   const [isMobile, setIsMobile] = React.useState(() => window.matchMedia('(max-width: 767px)').matches);
   const [mobileTab, setMobileTab] = React.useState('home');
   const [mobileAddTrigger, setMobileAddTrigger] = React.useState(0);
@@ -604,6 +611,7 @@ function App() {
 
   // Persist state to localStorage
   React.useEffect(() => { saveState(state); }, [state]);
+  React.useEffect(() => { stateRef.current = state; }, [state]);
 
   // Persist Supabase config to localStorage
   React.useEffect(() => {
@@ -661,6 +669,7 @@ function App() {
     setSyncStatus({ loading: true, error: null, syncedAt: null });
     supabaseLoadAll(client)
       .then(remoteData => {
+        skipNextAutosaveRef.current = true;
         applyRemoteData(remoteData);
         supabaseLoadedRef.current = true;
         setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
@@ -691,13 +700,6 @@ function App() {
       })))
       .catch(() => {});
   }, []); // eenmalig bij mount
-
-  // Refs zodat de flush-handler altijd de laatste state ziet
-  const stateRef       = React.useRef(state);
-  const pendingSaveRef = React.useRef(false);
-  const saveQueueRef   = React.useRef(Promise.resolve());
-  const skipNextAutosaveRef = React.useRef(false);
-  React.useEffect(() => { stateRef.current = state; }, [state]);
 
   const runSaveSnapshotToSupabase = React.useCallback(snapshot => {
     const client = getSupabaseClient(supabaseConfig);
@@ -760,6 +762,7 @@ function App() {
     setSyncStatus(s => ({ ...s, loading: true, error: null }));
     return supabaseLoadAll(client)
       .then(remoteData => {
+        skipNextAutosaveRef.current = true;
         applyRemoteData(remoteData);
         supabaseLoadedRef.current = true;
         setSyncStatus({ loading: false, error: null, syncedAt: new Date().toISOString() });
@@ -770,6 +773,17 @@ function App() {
         return false;
       });
   }, [supabaseConfig, applyRemoteData]);
+
+  // Houd geopende laptop- en telefoontabs gelijk zonder handmatig herladen.
+  React.useEffect(() => {
+    if (!supabaseConfig.url || !supabaseConfig.anonKey) return;
+    const pullWhenVisible = () => {
+      if (document.visibilityState === 'hidden') return;
+      reloadSupabase();
+    };
+    const timer = setInterval(pullWhenVisible, SUPABASE_PULL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [supabaseConfig.url, supabaseConfig.anonKey, reloadSupabase]);
 
   // Automatisch opslaan: korte debounce. Markeer als "pending" zodat flush kan vuren.
   React.useEffect(() => {
