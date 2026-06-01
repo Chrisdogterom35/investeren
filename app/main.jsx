@@ -24,6 +24,8 @@ const T212_PROXY        = 'https://corsproxy.io/?url=';
 const SUPABASE_CFG_KEY  = 'investeringen-supabase-v1';
 const SUPABASE_CFG_VERSION = 2;
 const SUPABASE_PULL_INTERVAL_MS = 8000;
+const SERVER_PRICE_REFRESH_KEY = 'investeringen-server-price-refresh-v1';
+const SERVER_PRICE_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
 // ── Price history helper ──────────────────────────────────────
 function appendToHistory(existing, date, price) {
@@ -47,6 +49,18 @@ function loadSupabaseConfig() {
     if (stored?.configVersion === SUPABASE_CFG_VERSION && stored?.url && stored?.anonKey) return stored;
   } catch {}
   return { ...SUPABASE_DEFAULTS };
+}
+
+let lastAutomaticServerPriceRefreshAt = 0;
+
+function claimAutomaticServerPriceRefresh() {
+  const now = Date.now();
+  let stored = 0;
+  try { stored = +(localStorage.getItem(SERVER_PRICE_REFRESH_KEY) || 0); } catch {}
+  if (now - Math.max(stored, lastAutomaticServerPriceRefreshAt) < SERVER_PRICE_REFRESH_INTERVAL_MS) return false;
+  lastAutomaticServerPriceRefreshAt = now;
+  try { localStorage.setItem(SERVER_PRICE_REFRESH_KEY, String(now)); } catch {}
+  return true;
 }
 
 let supabaseClientCache = { key: null, client: null };
@@ -868,28 +882,34 @@ function App() {
 
   const refreshSpot = React.useCallback(async (options = {}) => {
     const manual = options?.manual === true || options?.type === 'click';
+    const autoServerRefresh = !manual && claimAutomaticServerPriceRefresh();
     setSpotStatus(s => ({ ...s, loading: true, error: null }));
 
-    if (manual) {
+    let serverRefreshFailed = false;
+    if (manual || autoServerRefresh) {
       try {
         const serverResult = await refreshPricesViaServer();
         await reloadSupabase();
-        const warnings = (serverResult.warnings || []).filter(Boolean);
-        setSpotStatus({
-          loading: false,
-          error: warnings.length ? warnings.join(' · ') : null,
-          fetchedAt: new Date().toISOString(),
-        });
-        return;
+        if (manual) {
+          const warnings = (serverResult.warnings || []).filter(Boolean);
+          setSpotStatus({
+            loading: false,
+            error: warnings.length ? warnings.join(' · ') : null,
+            fetchedAt: new Date().toISOString(),
+          });
+          return;
+        }
       } catch (e) {
+        serverRefreshFailed = true;
         console.warn('[prijzen] server-refresh mislukt, probeer browser fallback:', e.message);
       }
     }
 
+    const refreshMeesmanInBrowser = manual || serverRefreshFailed;
     const [metals, crypto, meesman] = await Promise.allSettled([
       fetchSpotPrices(),
       fetchCryptoPrices(),
-      manual ? fetchMeesmanLatestFromWebsite() : Promise.resolve(null),
+      refreshMeesmanInBrowser ? fetchMeesmanLatestFromWebsite() : Promise.resolve(null),
     ]);
     const updates = {};
     const priceRows = [];
@@ -913,7 +933,7 @@ function App() {
       );
     }
     const meesmanEntry = meesman.status === 'fulfilled' ? meesman.value?.meesmanNavHistory?.[0] : null;
-    if (manual && meesmanEntry?.date && +meesmanEntry.nav > 0) {
+    if (refreshMeesmanInBrowser && meesmanEntry?.date && +meesmanEntry.nav > 0) {
       priceRows.push({
         asset: 'meesman_aandelen_wereldwijd_totaal',
         date: meesmanEntry.date,
@@ -921,7 +941,7 @@ function App() {
         source: 'meesman.nl',
       });
     }
-    if (Object.keys(updates).length || (manual && meesmanEntry?.date && +meesmanEntry.nav > 0)) {
+    if (Object.keys(updates).length || (refreshMeesmanInBrowser && meesmanEntry?.date && +meesmanEntry.nav > 0)) {
       // Sla op in liveSpot (directe weergave) én tweaks (persistent na refresh)
       if (Object.keys(updates).length) {
         setLiveSpot(prev => ({ ...prev, ...updates }));
@@ -935,7 +955,7 @@ function App() {
         if (updates.btcSpotEur)            hist.btcHistory    = appendToHistory(s.btcHistory,    today, updates.btcSpotEur);
         if (updates.ethSpotEur)            hist.ethHistory    = appendToHistory(s.ethHistory,    today, updates.ethSpotEur);
         if (updates.paxgSpotEur)           hist.paxgHistory   = appendToHistory(s.paxgHistory,   today, updates.paxgSpotEur);
-        if (manual && meesmanEntry?.date && +meesmanEntry.nav > 0) {
+        if (refreshMeesmanInBrowser && meesmanEntry?.date && +meesmanEntry.nav > 0) {
           const normalized = normalizeMeesmanHistory(mergePriceHistory(s.meesmanNavHistory, [meesmanEntry]));
           hist.meesmanNavHistory = normalized.history;
           hist.meesmanNavEur = normalized.currentNav;
@@ -945,7 +965,7 @@ function App() {
     }
 
     let priceSaveError = null;
-    if (manual && priceRows.length) {
+    if ((manual || serverRefreshFailed) && priceRows.length) {
       const client = getSupabaseClient(supabaseConfig);
       if (client) {
         try {
@@ -961,7 +981,7 @@ function App() {
     const errors = [
       metals.status === 'rejected' ? `Goud/zilver: ${metals.reason?.message}` : null,
       crypto.status === 'rejected' ? `Crypto: ${crypto.reason?.message}`       : null,
-      manual && meesman.status === 'rejected' ? `Meesman: ${meesman.reason?.message}` : null,
+      refreshMeesmanInBrowser && meesman.status === 'rejected' ? `Meesman: ${meesman.reason?.message}` : null,
       priceSaveError,
     ].filter(Boolean);
 
