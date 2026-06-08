@@ -19,7 +19,7 @@ function PreviewBanner({ variant }) {
     }}>
       <span>UI Preview — {labels[variant] || variant}</span>
       <span style={{ opacity: 0.5 }}>|</span>
-      <a href="index.html" style={{ color: '#fff', textDecoration: 'underline' }}>Alle opties</a>
+      <a href="./index.html" style={{ color: '#fff', textDecoration: 'underline' }}>Alle opties</a>
       <a href="../index.html" style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none' }}>Huidige site</a>
     </div>
   );

@@ -1373,7 +1373,7 @@ function App() {
               }}>
               ⚙
             </button>
-            <a href="preview/" title="UI Preview — 3 nieuwe designs"
+            <a href="./preview/index.html" title="UI Preview — 3 nieuwe designs"
               style={{
                 marginLeft: 4, padding: '5px 10px', fontFamily: 'inherit', fontSize: 11,
                 color: 'var(--fg-dim)', textDecoration: 'none',
