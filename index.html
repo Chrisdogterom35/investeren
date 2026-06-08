@@ -5,14 +5,16 @@
 <title>Investeringen</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="Investeringen" />
-<meta name="theme-color" content="#1a2744" />
+<meta name="theme-color" content="#16a34a" />
 <meta name="mobile-web-app-capable" content="yes" />
 <link rel="icon" type="image/svg+xml" href="icon.svg" />
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+<link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
+<link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -279,7 +281,7 @@
     .tweaks-panel { width: calc(100vw - 24px) !important; right: 12px !important; left: 12px !important; bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; max-height: 75vh !important; }
     .spot-bar-source { display: none !important; }
     .nav-tab-btns { display: none !important; }
-    .nav-mobile-brand { display: block !important; }
+    .nav-mobile-brand { display: flex !important; }
     .mob-nav { display: flex !important; }
     .modal-backdrop { padding: 0 !important; align-items: stretch !important; justify-content: stretch !important; }
     .modal-panel {
@@ -371,6 +373,8 @@
   /* ========== MOBILE BOTTOM NAV ========== */
   .nav-mobile-brand {
     display: none;
+    align-items: center;
+    gap: 10px;
     font-family: var(--ff-display);
     font-size: 18px;
     font-weight: 500;

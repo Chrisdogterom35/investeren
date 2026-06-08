@@ -534,13 +534,16 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       {/* HEADER — desktop only */}
       {!isMobile && (
         <header style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:24, gap:20, flexWrap:'wrap' }}>
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <AppLogo size={44} />
+            <div>
             <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'0.12em', color:'var(--fg-muted)', marginBottom:6, fontFamily:'var(--ff-mono)' }}>
               Portfolio · bijgewerkt {fmtDate(new Date().toISOString().slice(0,10))}
             </div>
             <h1 style={{ margin:0, fontFamily:'var(--ff-display)', fontWeight:500, fontSize:44, letterSpacing:'-0.02em', lineHeight:1 }}>
               Investeringen
             </h1>
+            </div>
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
             <Button variant="ghost" onClick={() => setEditMode(!editMode)}

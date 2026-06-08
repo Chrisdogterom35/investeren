@@ -138,4 +138,22 @@ const dotStyle  = (color, size = 8) => ({ width: size, height: size, borderRadiu
 const labelSm   = { fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--fg-dim)', marginBottom: 4 };
 const monoSm    = { fontFamily: 'var(--ff-mono)', fontSize: 11 };
 
-Object.assign(window, { Button, Card, Pill, Field, Input, Select, Textarea, Delta, inputStyle, dotStyle, labelSm, monoSm });
+function assetUrl(path) {
+  const base = window.__ASSET_BASE__ || '';
+  return base + path;
+}
+
+function AppLogo({ size = 28, style, ...rest }) {
+  return (
+    <img
+      src={assetUrl('icon.svg')}
+      alt="Investeringen"
+      width={size}
+      height={size}
+      style={{ borderRadius: Math.round(size * 0.22), display: 'block', flexShrink: 0, ...style }}
+      {...rest}
+    />
+  );
+}
+
+Object.assign(window, { Button, Card, Pill, Field, Input, Select, Textarea, Delta, inputStyle, dotStyle, labelSm, monoSm, AppLogo, assetUrl });

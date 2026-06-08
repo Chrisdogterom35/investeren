@@ -1290,7 +1290,10 @@ function App() {
       {/* Global nav */}
       <nav style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)', position: 'sticky', top: 0, zIndex: 50 }}>
         <div className="nav-inner" style={{ maxWidth: 1360, margin: '0 auto', padding: '0 28px', display: 'flex', alignItems: 'center', gap: 0 }}>
-          <span className="nav-mobile-brand" style={{ display: 'none' }}>Investeringen</span>
+          <div className="nav-mobile-brand" style={{ display: 'none', alignItems: 'center', gap: 10, marginRight: 8 }}>
+            <AppLogo size={26} />
+            <span>Investeringen</span>
+          </div>
           <div className="nav-tab-btns" style={{ display: 'flex' }}>
             {TABS.map(tab => (
               <button key={tab.key} onClick={() => setActiveTab(tab.key)}

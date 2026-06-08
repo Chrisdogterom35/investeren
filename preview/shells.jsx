@@ -69,12 +69,15 @@ function TerminalShell({ variant, activeTab, setActiveTab, children, totals, onS
           borderRight: '1px solid var(--border-strong)',
           display: 'flex', flexDirection: 'column',
         }}>
-          <div style={{ padding: '16px 14px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ padding: '16px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <AppLogo size={28} />
+            <div>
             <div style={{ fontFamily: 'var(--ff-mono)', fontSize: 13, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.05em' }}>
               INVST
             </div>
             <div style={{ fontSize: 9, color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', marginTop: 2 }}>
               PORTFOLIO v3.0
+            </div>
             </div>
           </div>
           <nav style={{ flex: 1, padding: '8px 0' }}>
@@ -163,11 +166,14 @@ function VaultShell({ variant, activeTab, setActiveTab, children, totals, onSett
           borderRight: '1px solid var(--border)',
           display: 'flex', flexDirection: 'column', padding: '20px 12px',
         }}>
-          <div style={{ padding: '0 12px 24px' }}>
+          <div style={{ padding: '0 12px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <AppLogo size={36} />
+            <div>
             <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--fg)' }}>
               Investeringen
             </div>
             <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>Portfolio tracker</div>
+            </div>
           </div>
           <nav style={{ flex: 1, display: 'grid', gap: 4 }}>
             {PREVIEW_TABS.map(tab => (
@@ -224,8 +230,11 @@ function LuminaShell({ variant, activeTab, setActiveTab, children, totals, onSet
           maxWidth: 1400, margin: '0 auto', padding: '0 24px',
           display: 'flex', alignItems: 'center', gap: 32, height: 56,
         }}>
-          <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--fg)' }}>
-            Lumina<span style={{ color: 'var(--accent)' }}>.</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <AppLogo size={32} />
+            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--fg)' }}>
+              Lumina<span style={{ color: 'var(--accent)' }}>.</span>
+            </div>
           </div>
           <nav style={{ display: 'flex', gap: 4 }}>
             {PREVIEW_TABS.map(tab => (
