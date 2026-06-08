@@ -1,0 +1,78 @@
+/* Preview theme: Terminal (Bloomberg/Fortress) */
+.preview-terminal {
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --surface-2: #111111;
+  --border: #2a2a2a;
+  --border-strong: #3a3a3a;
+  --fg: #ffb000;
+  --fg-muted: #c48b00;
+  --fg-dim: #7a5600;
+  --accent: #ff8a00;
+  --positive: #00e676;
+  --negative: #ff4040;
+  --ff-sans: 'JetBrains Mono', ui-monospace, monospace;
+  --ff-display: 'JetBrains Mono', ui-monospace, monospace;
+  --ff-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --radius: 0px;
+  --radius-lg: 0px;
+  --shadow: none;
+}
+
+/* Preview theme: Vault (Robinhood) */
+.preview-vault {
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --surface-2: #f0f0f2;
+  --border: #e5e5ea;
+  --border-strong: #d1d1d6;
+  --fg: #1d1d1f;
+  --fg-muted: #86868b;
+  --fg-dim: #aeaeb2;
+  --accent: #00c805;
+  --positive: #00c805;
+  --negative: #ff5000;
+  --ff-sans: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --ff-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --ff-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* Preview theme: Lumina (Vaulto/cinematic) */
+.preview-lumina {
+  --bg: #0c0e14;
+  --surface: #141820;
+  --surface-2: #1a1f2e;
+  --border: rgba(255,255,255,0.08);
+  --border-strong: rgba(255,255,255,0.12);
+  --fg: #f0f0f5;
+  --fg-muted: #8888a0;
+  --fg-dim: #55556a;
+  --accent: #818cf8;
+  --positive: #34d399;
+  --negative: #f87171;
+  --ff-sans: 'Inter', system-ui, sans-serif;
+  --ff-display: 'Inter', system-ui, sans-serif;
+  --ff-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+
+/* Shared preview overrides */
+.preview-terminal .dash-card,
+.preview-terminal button { border-radius: 0 !important; }
+.preview-vault .tx-page { max-width: none !important; padding: 32px 40px 60px !important; }
+.preview-lumina .tx-page { max-width: none !important; padding: 0 !important; }
+
+.preview-terminal .tweaks-panel { border-radius: 0 !important; }
+.preview-vault .tweaks-panel { border-radius: 16px !important; }
+
+@media (max-width: 767px) {
+  .preview-terminal aside,
+  .preview-vault aside { display: none; }
+  .preview-terminal main,
+  .preview-vault main { padding-bottom: 20px; }
+}

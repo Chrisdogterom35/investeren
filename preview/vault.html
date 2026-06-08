@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<title>Vault Preview — Investeringen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<link rel="icon" type="image/svg+xml" href="../icon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; overflow-x: hidden; }
+  body { font-family: var(--ff-sans); background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased; }
+  button { font-family: inherit; }
+  input, select, textarea { font-family: inherit; color: inherit; }
+</style>
+</head>
+<body class="preview-vault">
+<div id="root"></div>
+<script>window.__PREVIEW_VARIANT__ = 'vault'; window.TWEAKS = window.TWEAKS || {};</script>
+<script type="text/babel" src="../app/data.jsx"></script>
+<script type="text/babel" src="../app/ui.jsx"></script>
+<script type="text/babel" src="../app/charts.jsx"></script>
+<script type="text/babel" src="../app/modals.jsx"></script>
+<script type="text/babel" src="../app/tabs.jsx"></script>
+<script type="text/babel" src="shells.jsx"></script>
+<script type="text/babel" src="dashboards.jsx"></script>
+<script type="text/babel" src="../app/main.jsx"></script>
+</body>
+</html>

@@ -851,6 +851,11 @@ function App() {
   // Apply theme class to <html>
   React.useEffect(() => {
     const el = document.documentElement;
+    if (window.__PREVIEW_VARIANT__) {
+      THEMES.forEach(t => el.classList.remove(t.className));
+      el.classList.add(`preview-${window.__PREVIEW_VARIANT__}`);
+      return;
+    }
     THEMES.forEach(t => el.classList.remove(t.className));
     const t = THEMES.find(t => t.key === tweaks.theme) || THEMES[0];
     el.classList.add(t.className);
@@ -1218,6 +1223,68 @@ function App() {
 
   const sbOk = !!(supabaseConfig.url && supabaseConfig.anonKey);
 
+  const previewVariant = window.__PREVIEW_VARIANT__;
+  const PreviewShell = previewVariant && window.PREVIEW_SHELLS?.[previewVariant];
+  const PreviewDashboard = previewVariant && window.PREVIEW_DASHBOARDS?.[previewVariant];
+  const usePreview = !!(previewVariant && PreviewShell && PreviewDashboard);
+
+  const previewTotals = React.useMemo(() => {
+    if (!usePreview) return null;
+    const included = summaries.filter(s => s.party.includeInPortfolio !== false);
+    const total = included.reduce((s, x) => s + x.currentValueEur, 0);
+    const invested = included.reduce((s, x) => s + x.invested, 0);
+    const pnl = included.reduce((s, x) => s + x.pnl, 0);
+    return {
+      total, invested, pnl,
+      pnlPct: invested > 0 ? (pnl / invested) * 100 : 0,
+      spots: displayTweaks,
+    };
+  }, [usePreview, summaries, displayTweaks]);
+
+  if (usePreview) {
+    const shellProps = {
+      variant: previewVariant,
+      activeTab, setActiveTab,
+      totals: previewTotals,
+      onSettings: () => setTweaksOpen(o => !o),
+      onRefresh: refreshSpot,
+      spotStatus, syncStatus, sbOk, tweaksOpen,
+    };
+    return (
+      <>
+        <PreviewShell {...shellProps}>
+          {activeTab === 'dashboard' && (
+            <PreviewDashboard state={state} setState={setSyncedState}
+              tweaks={displayTweaks} setTweaks={updateTweaks}
+              spotStatus={spotStatus} onRefreshSpot={refreshSpot}
+              onUpdateMeesman={updateMeesmanNav} />
+          )}
+          {activeTab === 'transacties' && (
+            <TransactionsTab state={state} setState={setSyncedState} spots={spots} />
+          )}
+          {activeTab === 'pensioen' && (
+            <PensionTab summaries={summaries} />
+          )}
+        </PreviewShell>
+        {tweaksOpen && (
+          <TweaksPanel
+            tweaks={displayTweaks} setTweaks={updateTweaks}
+            onReset={resetData}
+            onExport={exportData} onImport={importData} importMsg={importMsg}
+            spotStatus={spotStatus} onRefreshSpot={refreshSpot}
+            t212Status={t212Status} onImportT212={importT212} onDeleteT212={deleteT212Txs}
+            supabaseConfig={supabaseConfig} setSupabaseConfig={setSupabaseConfig}
+            syncStatus={syncStatus} onSyncNow={syncNow}
+            onClose={() => setTweaksOpen(false)}
+            meesmanNav={state.meesmanNavEur} meesmanHistory={state.meesmanNavHistory}
+            onUpdateMeesman={updateMeesmanNav}
+            histStatus={meesmanHistStatus} onLoadHistory={loadMeesmanHistory}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <>
       {/* Global nav */}
@@ -1306,6 +1373,15 @@ function App() {
               }}>
               ⚙
             </button>
+            <a href="preview/" title="UI Preview — 3 nieuwe designs"
+              style={{
+                marginLeft: 4, padding: '5px 10px', fontFamily: 'inherit', fontSize: 11,
+                color: 'var(--fg-dim)', textDecoration: 'none',
+                border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+                lineHeight: 1, transition: 'all .15s', whiteSpace: 'nowrap',
+              }}>
+              Preview
+            </a>
           </div>
         </div>
       </nav>

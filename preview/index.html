@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<title>UI Preview — Investeringen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" type="image/svg+xml" href="../icon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #0a0a0c;
+    color: #e8e6e3;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .hub-header {
+    padding: 48px 32px 32px;
+    max-width: 1200px;
+    margin: 0 auto;
+    border-bottom: 1px solid #1e1e24;
+  }
+  .hub-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: #1a1a22;
+    border: 1px solid #2a2a34;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 16px;
+  }
+  .hub-badge span { color: #6ee7a0; }
+  .hub-header h1 {
+    font-size: clamp(28px, 5vw, 42px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin-bottom: 12px;
+  }
+  .hub-header p {
+    font-size: 16px;
+    color: #888;
+    max-width: 640px;
+    line-height: 1.6;
+  }
+  .hub-header a {
+    color: #6ee7a0;
+    text-decoration: none;
+  }
+  .hub-header a:hover { text-decoration: underline; }
+
+  .compare-section {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 32px;
+  }
+  .compare-section h2 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #666;
+    margin-bottom: 20px;
+  }
+
+  .options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+    margin-bottom: 48px;
+  }
+
+  .option-card {
+    background: #111116;
+    border: 1px solid #222228;
+    border-radius: 16px;
+    overflow: hidden;
+    transition: border-color .2s, transform .2s;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+  }
+  .option-card:hover {
+    border-color: #444;
+    transform: translateY(-2px);
+  }
+
+  .option-preview {
+    height: 200px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Terminal preview mock */
+  .mock-terminal {
+    background: #000;
+    height: 100%;
+    padding: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #ffb000;
+  }
+  .mock-terminal .t-bar {
+    display: flex; gap: 8px; margin-bottom: 8px;
+    border-bottom: 1px solid #333; padding-bottom: 6px;
+  }
+  .mock-terminal .t-row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 4px; padding: 3px 0; border-bottom: 1px solid #1a1a1a;
+    color: #c48b00;
+  }
+  .mock-terminal .t-row .pos { color: #00e676; }
+  .mock-terminal .t-row .neg { color: #ff4040; }
+
+  /* Vault preview mock */
+  .mock-vault {
+    background: #f8f9fa;
+    height: 100%;
+    padding: 16px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+  .mock-vault .v-hero {
+    font-size: 28px; font-weight: 800; color: #111;
+    letter-spacing: -0.03em; margin-bottom: 4px;
+  }
+  .mock-vault .v-sub { font-size: 12px; color: #00c805; font-weight: 600; margin-bottom: 14px; }
+  .mock-vault .v-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 0; border-bottom: 1px solid #eee;
+    font-size: 11px; color: #333;
+  }
+  .mock-vault .v-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* Lumina preview mock */
+  .mock-lumina {
+    background: linear-gradient(135deg, #0c0e14 0%, #141828 100%);
+    height: 100%;
+    padding: 16px;
+  }
+  .mock-lumina .l-glass {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 12px;
+    backdrop-filter: blur(8px);
+  }
+  .mock-lumina .l-val {
+    font-size: 24px; font-weight: 700; color: #fff;
+    letter-spacing: -0.02em;
+  }
+  .mock-lumina .l-bar {
+    height: 4px; border-radius: 2px; margin-top: 8px;
+    background: linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa);
+  }
+  .mock-lumina .l-tags {
+    display: flex; gap: 6px; margin-top: 10px;
+  }
+  .mock-lumina .l-tag {
+    font-size: 9px; padding: 3px 8px; border-radius: 999px;
+    background: rgba(99,102,241,0.15); color: #a5b4fc;
+  }
+
+  .option-body { padding: 20px; flex: 1; display: flex; flex-direction: column; }
+  .option-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.1em; margin-bottom: 6px;
+  }
+  .option-label.terminal { color: #ffb000; }
+  .option-label.vault { color: #00c805; }
+  .option-label.lumina { color: #818cf8; }
+
+  .option-body h3 {
+    font-size: 20px; font-weight: 700; letter-spacing: -0.02em;
+    margin-bottom: 8px;
+  }
+  .option-body p {
+    font-size: 13px; color: #888; line-height: 1.55; flex: 1;
+    margin-bottom: 16px;
+  }
+  .option-tags {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;
+  }
+  .option-tags span {
+    font-size: 10px; padding: 3px 8px; border-radius: 6px;
+    background: #1a1a22; color: #666; border: 1px solid #2a2a34;
+  }
+  .option-cta {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 16px; border-radius: 10px;
+    font-size: 13px; font-weight: 600;
+    background: #fff; color: #111;
+    align-self: flex-start;
+  }
+  .option-card:hover .option-cta { background: #e8e6e3; }
+
+  /* Comparison table */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .compare-table th, .compare-table td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid #1e1e24;
+  }
+  .compare-table th {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #666;
+    background: #0e0e12;
+  }
+  .compare-table td:first-child { color: #888; }
+  .compare-table .highlight { color: #fff; font-weight: 500; }
+
+  .inspiration {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 32px 60px;
+  }
+  .inspiration p {
+    font-size: 13px; color: #555; line-height: 1.7;
+  }
+  .inspiration a { color: #666; }
+
+  @media (max-width: 640px) {
+    .hub-header, .compare-section, .inspiration { padding-left: 20px; padding-right: 20px; }
+    .compare-table { font-size: 11px; }
+    .compare-table th, .compare-table td { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hub-header">
+  <div class="hub-badge"><span>●</span> UI Preview</div>
+  <h1>Drie nieuwe dashboard-designs</h1>
+  <p>
+    Gebaseerd op hoe toonaangevende asset-dashboards werken — van Bloomberg-terminal tot Robinhood en cinematic fintech.
+    Elke optie is een volledig werkende preview met dezelfde data. 
+    <a href="../index.html">← Terug naar huidige site</a>
+  </p>
+</header>
+
+<section class="compare-section">
+  <h2>Kies een optie</h2>
+  <div class="options-grid">
+
+    <a class="option-card" href="terminal.html">
+      <div class="option-preview">
+        <div class="mock-terminal">
+          <div class="t-bar">
+            <span>BTC €88.000</span>
+            <span>AU €131/g</span>
+            <span>MSN €102</span>
+          </div>
+          <div class="t-row"><span>MEESMAN</span><span>€12.450</span><span class="pos">+18.2%</span></div>
+          <div class="t-row"><span>BITCOIN</span><span>€3.210</span><span class="pos">+42.1%</span></div>
+          <div class="t-row"><span>GOLDREP</span><span>€8.900</span><span class="pos">+12.4%</span></div>
+          <div class="t-row"><span>T212</span><span>€5.670</span><span class="neg">−2.3%</span></div>
+          <div class="t-row"><span>CASH</span><span>€2.100</span><span>—</span></div>
+        </div>
+      </div>
+      <div class="option-body">
+        <div class="option-label terminal">Optie A</div>
+        <h3>Terminal</h3>
+        <p>Bloomberg/Fortress-stijl: zwart scherm, amber monospace, dense data-tables, live ticker. Voor power users die alles in één oogopslag willen.</p>
+        <div class="option-tags">
+          <span>Donker</span><span>Dense layout</span><span>Monospace</span><span>Sidebar</span>
+        </div>
+        <span class="option-cta">Bekijk preview →</span>
+      </div>
+    </a>
+
+    <a class="option-card" href="vault.html">
+      <div class="option-preview">
+        <div class="mock-vault">
+          <div class="v-hero">€32.330</div>
+          <div class="v-sub">+€4.820 (+17.5%)</div>
+          <div class="v-row"><div class="v-dot" style="background:#6366f1"></div><span>Meesman</span><span style="margin-left:auto;font-weight:600">€12.450</span></div>
+          <div class="v-row"><div class="v-dot" style="background:#f59e0b"></div><span>Bitcoin</span><span style="margin-left:auto;font-weight:600">€3.210</span></div>
+          <div class="v-row"><div class="v-dot" style="background:#eab308"></div><span>Goldrepublic</span><span style="margin-left:auto;font-weight:600">€8.900</span></div>
+        </div>
+      </div>
+      <div class="option-body">
+        <div class="option-label vault">Optie B</div>
+        <h3>Vault</h3>
+        <p>Robinhood/Vault-stijl: licht, luchtig, groot portfolio-cijfer, groene accenten. Toegankelijk en modern voor dagelijks gebruik.</p>
+        <div class="option-tags">
+          <span>Licht</span><span>Hero number</span><span>Sidebar</span><span>Cards</span>
+        </div>
+        <span class="option-cta">Bekijk preview →</span>
+      </div>
+    </a>
+
+    <a class="option-card" href="lumina.html">
+      <div class="option-preview">
+        <div class="mock-lumina">
+          <div class="l-glass">
+            <div style="font-size:10px;color:#666;margin-bottom:4px">PORTFOLIO</div>
+            <div class="l-val">€32.330</div>
+            <div class="l-bar"></div>
+            <div class="l-tags">
+              <span class="l-tag">Aandelen 38%</span>
+              <span class="l-tag">Crypto 10%</span>
+              <span class="l-tag">Metaal 28%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="option-body">
+        <div class="option-label lumina">Optie C</div>
+        <h3>Lumina</h3>
+        <p>Vaulto/cinematic fintech: donker charcoal, glassmorphism, gradient accenten, brede charts. Premium feel voor wealth tracking.</p>
+        <div class="option-tags">
+          <span>Donker</span><span>Glass cards</span><span>Top nav</span><span>Gradients</span>
+        </div>
+        <span class="option-cta">Bekijk preview →</span>
+      </div>
+    </a>
+
+  </div>
+
+  <h2>Vergelijking</h2>
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th>Eigenschap</th>
+        <th>Terminal</th>
+        <th>Vault</th>
+        <th>Lumina</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Inspiratie</td><td class="highlight">Bloomberg, Fortress</td><td class="highlight">Robinhood, Vault</td><td class="highlight">Vaulto, Lumina Invest</td></tr>
+      <tr><td>Kleurenschema</td><td>Zwart + amber</td><td>Wit + groen</td><td>Charcoal + paars</td></tr>
+      <tr><td>Navigatie</td><td>Sidebar links</td><td>Sidebar links</td><td>Top bar horizontaal</td></tr>
+      <tr><td>Typografie</td><td>JetBrains Mono</td><td>Plus Jakarta Sans</td><td>Inter + display</td></tr>
+      <tr><td>Dichtheid</td><td>Compact / dense</td><td>Ruim / comfortable</td><td>Medium / cinematic</td></tr>
+      <tr><td>Holdings-weergave</td><td>Data-tabel (blotter)</td><td>Lijst met dots</td><td>Glass cards grid</td></tr>
+      <tr><td>Chart focus</td><td>Inline sparklines</td><td>Hero + donut</td><td>Wide area chart</td></tr>
+      <tr><td>Best voor</td><td>Power users, traders</td><td>Dagelijks overzicht</td><td>Premium presentatie</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="inspiration">
+  <p>
+    Referenties: 
+    <a href="https://fortress-dashboard.pages.dev/" target="_blank" rel="noopener">Fortress Dashboard</a>,
+    <a href="https://dashboardpack.com/theme-details/vault-dashboard/" target="_blank" rel="noopener">Vault Investment Template</a>,
+    <a href="https://github.com/Spaghetih/lumina-invest" target="_blank" rel="noopener">Lumina Invest</a>.
+    Alle previews gebruiken dezelfde data-laag, Supabase-sync en functionaliteit als de productie-site.
+  </p>
+</section>
+
+</body>
+</html>
