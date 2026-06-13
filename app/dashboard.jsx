@@ -56,13 +56,20 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     () => allParties.map(p => summarizeParty(p, state.transactions, spots)),
     [state.transactions, spots, allParties]
   );
+  // Twee aparte vlaggen, met fallback op het oude includeInPortfolio.
+  // - includeInTotal:    telt mee in totale waarde, YTD, P&L en allocatie-donut
+  // - includeInTimeChart: telt mee in de waarde-over-tijd grafiek
   const includedParties = React.useMemo(
-    () => allParties.filter(p => p.includeInPortfolio !== false),
+    () => allParties.filter(p => (p.includeInTotal ?? p.includeInPortfolio) !== false),
     [allParties]
   );
   const portfolioSummaries = React.useMemo(
-    () => summaries.filter(s => s.party.includeInPortfolio !== false),
+    () => summaries.filter(s => (s.party.includeInTotal ?? s.party.includeInPortfolio) !== false),
     [summaries]
+  );
+  const timeChartParties = React.useMemo(
+    () => allParties.filter(p => (p.includeInTimeChart ?? p.includeInPortfolio) !== false),
+    [allParties]
   );
 
   const hiddenParties  = state.hiddenParties  || [];
@@ -87,7 +94,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       .map(p => ({ date: p.date, total: +p.total, invested: +p.invested }))
       .filter(p => p.date && Number.isFinite(p.total) && Number.isFinite(p.invested))
       .sort((a, b) => a.date.localeCompare(b.date));
-    const liveSeries = buildValueTimeSeries(state.transactions, includedParties, spots);
+    const liveSeries = buildValueTimeSeries(state.transactions, timeChartParties, spots);
     const byDate = new Map();
     supabaseSeries.forEach(p => byDate.set(p.date, p));
     liveSeries.forEach(p => byDate.set(p.date, p));
@@ -100,10 +107,10 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
     return [...byDate.values()]
       .filter(p => p.date >= '2025-01-01')
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [state.portfolioDailyValues, state.transactions, spots, includedParties, total, totalInvested]);
+  }, [state.portfolioDailyValues, state.transactions, spots, timeChartParties, total, totalInvested]);
   const partyTimeSeries = React.useMemo(
-    () => buildPartyTimeSeries(state.transactions, includedParties, spots),
-    [state.transactions, spots, includedParties]
+    () => buildPartyTimeSeries(state.transactions, timeChartParties, spots),
+    [state.transactions, spots, timeChartParties]
   );
   const allocationGroups = React.useMemo(() => {
     const knownCategories = new Set(CATEGORY_OPTIONS);
@@ -115,12 +122,12 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       return { id:'aandelen', name:'Aandelen', color:'oklch(58% 0.14 255)' };
     };
     const groups = new Map();
-    includedParties.forEach(p => {
+    timeChartParties.forEach(p => {
       const group = groupForParty(p);
       if (!groups.has(group.id)) groups.set(group.id, group);
     });
     return [...groups.values()];
-  }, [includedParties]);
+  }, [timeChartParties]);
   const allocationTimeSeries = React.useMemo(() => {
     const startDate = '2025-01-01';
     const firstPoint = partyTimeSeries.dates.findIndex(d => d >= startDate);
@@ -135,7 +142,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       if (p.category && !knownCategories.has(p.category)) return `allocation:${p.category}`;
       return 'aandelen';
     };
-    includedParties.forEach(p => {
+    timeChartParties.forEach(p => {
       const groupId = groupIdForParty(p);
       const values = (partyTimeSeries.byParty[p.id] || []).slice(sliceAt);
       if (!byAllocation[groupId]) byAllocation[groupId] = dates.map(() => 0);
@@ -147,7 +154,7 @@ function Dashboard({ state, setState, tweaks, setTweaks, spotStatus, onRefreshSp
       invested: partyTimeSeries.invested.slice(sliceAt),
       byParty: byAllocation,
     };
-  }, [partyTimeSeries, includedParties, allocationGroups]);
+  }, [partyTimeSeries, timeChartParties, allocationGroups]);
   const monthly = React.useMemo(() => buildMonthlyFlows(state.transactions), [state.transactions]);
 
   const ytd = React.useMemo(() => calcYTDReturn(timeSeries), [timeSeries]);
@@ -1091,7 +1098,8 @@ function PartyCard({ summary, total, spots, onClick, onQuickAdd, metric = 'pnl_e
           <div style={{ fontSize:11, color:'var(--fg-muted)', marginTop:3 }}>{p.subtitle}</div>
         </div>
         <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-          {p.includeInPortfolio === false && <Pill tone="neutral">Niet in totaal</Pill>}
+          {(p.includeInTotal     ?? p.includeInPortfolio) === false && <Pill tone="neutral">Niet in totaal</Pill>}
+          {(p.includeInTimeChart ?? p.includeInPortfolio) === false && <Pill tone="neutral">Niet in grafiek</Pill>}
           <Pill tone="neutral">{p.category}</Pill>
           <button onClick={e => { e.stopPropagation(); onEditParty && onEditParty(); }}
             title="Bewerken" style={{ background:'transparent', border:'none', color:'var(--fg-muted)', cursor:'pointer', fontSize:11, padding:'2px 4px' }}>✎</button>
@@ -1213,7 +1221,9 @@ function AddPartyModal({ open, onClose, onSave, initial, parties = [] }) {
     goal:     p?.goal     || '',
     color:    p?.color    || COLOR_PRESETS[0],
     spotKey:  p?.spotKey  || '',
-    includeInPortfolio: p?.includeInPortfolio !== false,
+    // Twee aparte vlaggen, met fallback op het oude includeInPortfolio voor bestaande partijen
+    includeInTotal:     (p?.includeInTotal     ?? p?.includeInPortfolio) !== false,
+    includeInTimeChart: (p?.includeInTimeChart ?? p?.includeInPortfolio) !== false,
   });
   const [form, setForm] = React.useState(() => blank(initial));
   React.useEffect(() => { if (open) setForm(blank(initial)); }, [open, initial]);
@@ -1250,7 +1260,8 @@ function AddPartyModal({ open, onClose, onSave, initial, parties = [] }) {
     onSave({ id, name:form.name.trim(), subtitle:form.subtitle.trim(),
       category:finalCategory, unit:form.unit, unitLabel:form.unitLabel||'€',
       goal: +form.goal || 0, color:form.color,
-      includeInPortfolio: form.includeInPortfolio !== false,
+      includeInTotal:     form.includeInTotal     !== false,
+      includeInTimeChart: form.includeInTimeChart !== false,
       ...(form.unit==='crypto' && form.spotKey ? { spotKey:form.spotKey } : {}),
     });
     onClose();
@@ -1316,18 +1327,32 @@ function AddPartyModal({ open, onClose, onSave, initial, parties = [] }) {
             ))}
           </div>
         </Field>
-        <label style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'11px 12px',
-          border:'1px solid var(--border)', borderRadius:'var(--radius)', background:'var(--surface-2)', cursor:'pointer' }}>
-          <input type="checkbox" checked={form.includeInPortfolio !== false}
-            onChange={e => set('includeInPortfolio', e.target.checked)}
-            style={{ marginTop:2, accentColor:'var(--accent)' }} />
-          <span>
-            <span style={{ display:'block', fontSize:13, fontWeight:600, color:'var(--fg)' }}>Meenemen in totaal en grafieken</span>
-            <span style={{ display:'block', fontSize:11, color:'var(--fg-muted)', marginTop:2 }}>
-              Uitgeschakeld blijft de partij bestaan, maar telt hij niet mee in totale waarde, YTD, verdeling en historische grafieken.
+        <div style={{ display:'grid', gap:8 }}>
+          <label style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'11px 12px',
+            border:'1px solid var(--border)', borderRadius:'var(--radius)', background:'var(--surface-2)', cursor:'pointer' }}>
+            <input type="checkbox" checked={form.includeInTotal !== false}
+              onChange={e => set('includeInTotal', e.target.checked)}
+              style={{ marginTop:2, accentColor:'var(--accent)' }} />
+            <span>
+              <span style={{ display:'block', fontSize:13, fontWeight:600, color:'var(--fg)' }}>Meenemen in totale waarde</span>
+              <span style={{ display:'block', fontSize:11, color:'var(--fg-muted)', marginTop:2 }}>
+                Telt mee in totale waarde, ingelegd, P&amp;L, YTD en de verdeling-donut.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+          <label style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'11px 12px',
+            border:'1px solid var(--border)', borderRadius:'var(--radius)', background:'var(--surface-2)', cursor:'pointer' }}>
+            <input type="checkbox" checked={form.includeInTimeChart !== false}
+              onChange={e => set('includeInTimeChart', e.target.checked)}
+              style={{ marginTop:2, accentColor:'var(--accent)' }} />
+            <span>
+              <span style={{ display:'block', fontSize:13, fontWeight:600, color:'var(--fg)' }}>Meenemen in waarde-over-tijd grafiek</span>
+              <span style={{ display:'block', fontSize:11, color:'var(--fg-muted)', marginTop:2 }}>
+                Telt mee in de portfolio-tijdlijn en de allocatie-grafiek. Onafhankelijk van bovenstaande keuze.
+              </span>
+            </span>
+          </label>
+        </div>
       </div>
       <div style={{ padding:'12px 22px 18px', display:'flex', justifyContent:'space-between', gap:10, borderTop:'1px solid var(--border)', background:'var(--surface-2)' }}>
         <Button variant="ghost" onClick={onClose}>Annuleren</Button>

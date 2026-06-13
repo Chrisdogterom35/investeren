@@ -1950,7 +1950,9 @@ function MobilePartijenView({ summaries, onOpenParty, onQuickAdd }) {
       return { ...s, years, yearlyEur, cagr };
     })
     .sort((a, b) => (b.currentValueEur || 0) - (a.currentValueEur || 0));
-  const includedEnriched = enriched.filter(s => s.party.includeInPortfolio !== false);
+  const includedEnriched = enriched.filter(
+    s => (s.party.includeInTotal ?? s.party.includeInPortfolio) !== false
+  );
 
   return (
     <div style={{ padding: '16px 14px 100px' }}>
@@ -2025,11 +2027,19 @@ function MobilePartijenView({ summaries, onOpenParty, onQuickAdd }) {
                     overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                     {s.party.category || 'Partij'}
                   </span>
-                  {s.party.includeInPortfolio === false && (
+                  {(s.party.includeInTotal ?? s.party.includeInPortfolio) === false && (
                     <>
                       <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--fg-dim)', flexShrink:0 }} />
                       <span style={{ fontSize: 10, color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', whiteSpace:'nowrap' }}>
                         niet in totaal
+                      </span>
+                    </>
+                  )}
+                  {(s.party.includeInTimeChart ?? s.party.includeInPortfolio) === false && (
+                    <>
+                      <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--fg-dim)', flexShrink:0 }} />
+                      <span style={{ fontSize: 10, color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', whiteSpace:'nowrap' }}>
+                        niet in grafiek
                       </span>
                     </>
                   )}
