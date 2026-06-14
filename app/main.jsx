@@ -555,56 +555,69 @@ async function fetchMeesmanNav() {
   throw new Error('Geen NAV-data ontvangen (alle Morningstar-endpoints geprobeerd)');
 }
 
-function buildT212Auth(secret) { return (secret || '').trim(); }
-
-async function fetchT212Orders(authHeader, cursor, mode = 'live') {
-  const host = mode === 'demo' ? 'demo.trading212.com' : 'live.trading212.com';
-  const base = cursor
-    ? `https://${host}/api/v0/equity/history/orders?cursor=${encodeURIComponent(cursor)}&limit=50`
-    : `https://${host}/api/v0/equity/history/orders?limit=50`;
-
-  // Probeer meerdere CORS-proxies — corsproxy.io blokkeert T212 soms
-  const proxies = [
-    url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-    url => `https://api.codetabs.com/v1/proxy/?quest=${url}`,
-    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    url => `https://corsproxy.org/?${encodeURIComponent(url)}`,
-  ];
-  const errors = [];
-  for (const wrap of proxies) {
-    let res;
-    try {
-      res = await fetch(wrap(base), { headers: { Authorization: authHeader } });
-    } catch (e) {
-      errors.push(`network: ${e.message || 'fetch failed'}`);
-      continue;
-    }
-    if (res.status === 401) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`401 — ${body || 'ongeldige sleutel'}`);
-    }
-    if (res.status === 403) throw new Error('Geen toegang (403) — sleutel heeft mogelijk onvoldoende rechten');
-    if (res.ok) return res.json();
-    // 5xx of CORS-proxy gaf 4xx terug die niet van T212 komt → volgende proxy
-    const body = await res.text().catch(() => '');
-    errors.push(`HTTP ${res.status}: ${(body || 'onbekend').slice(0, 120)}`);
+// Roept de Supabase Edge Function "t212-proxy" aan (server-side, geen CORS, key blijft serverside).
+// Geeft { account, transactions } terug. Vereist een gedeployde t212-proxy + T212_API_KEY secret.
+async function fetchT212Bundle(supabaseConfig, mode = 'live') {
+  if (!supabaseConfig?.url || !supabaseConfig?.anonKey) {
+    throw new Error('Supabase niet geconfigureerd');
   }
-  throw new Error(`Alle proxies faalden — ${errors.join(' · ')}`);
+  const url = supabaseConfig.url.trim().replace(/\/$/, '') + '/functions/v1/t212-proxy';
+  const anon = supabaseConfig.anonKey.trim();
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': anon,
+        'Authorization': `Bearer ${anon}`,
+      },
+      body: JSON.stringify({ mode }),
+    });
+  } catch (e) {
+    throw new Error('Kan de t212-proxy niet bereiken: ' + (e.message || 'netwerkfout') + ' — is de Edge Function gedeployd?');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 404) throw new Error('t212-proxy niet gevonden (404) — deploy de Edge Function eerst in Supabase');
+  if (!res.ok) throw new Error(data.error || `Proxy HTTP ${res.status}`);
+  return data; // { account, transactions }
 }
 
-function mapT212Order(order) {
-  const typeMap = { LIMIT_BUY:'koop', MARKET_BUY:'koop', LIMIT_SELL:'verkoop', MARKET_SELL:'verkoop', STOP_BUY:'koop', STOP_SELL:'verkoop' };
-  const qty   = +(order.filledQuantity || order.orderedQuantity || 0);
-  const price = +(order.filledPrice || (qty > 0 ? (order.filledValue / qty) : 0) || 0);
-  const fee   = (order.taxes || []).reduce((s, t) => s + +(t.quantity || 0), 0);
-  const ticker = (order.ticker || '').replace(/_[A-Z0-9]+$/, '');
+// Storting -> inleg, opname -> opname. Dedup via T212's unieke reference-veld.
+function mapT212Transaction(t) {
+  const typeMap = { DEPOSIT: 'inleg', WITHDRAW: 'opname' };
+  const kind = typeMap[t.type];
+  if (!kind) return null; // TRANSFER/FEE/dividend tellen niet mee in de bundle
+  const ref = String(t.reference || t.id || '');
+  if (!ref) return null;
   return {
-    id: makeId(), party: 'trading212',
-    type: typeMap[order.type] || 'koop',
-    date: (order.dateCreated || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
-    quantity: qty, unitPriceEur: +price.toFixed(4),
-    feeEur: fee > 0 ? +fee.toFixed(4) : undefined,
-    instrument: ticker, note: `T212:${order.id || ''}`, _t212Id: String(order.id || ''),
+    id: makeId(), party: 'trading212', type: kind,
+    date: (t.dateTime || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+    amountEur: Math.abs(+t.amount || 0),
+    note: `T212:${t.type}`, _t212Id: 'txn:' + ref,
+  };
+}
+
+// Eén waardering-transactie met de huidige accountwaarde (zet lastTotalValue van de bundle).
+function mapT212Valuation(account) {
+  if (!account) return null;
+  let value = null;
+  if (account.kind === 'summary') {
+    value = +account.data?.totalValue;
+  } else if (account.kind === 'cash') {
+    const d = account.data || {};
+    // `total` = canonieke accountwaarde (incl. pieCash/blocked). Val alleen terug
+    // op de som als `total` ontbreekt.
+    value = (d.total != null)
+      ? +d.total
+      : (+d.invested || 0) + (+d.ppl || 0) + (+d.free || 0);
+  }
+  if (!(value > 0)) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    id: makeId(), party: 'trading212', type: 'waardering',
+    date: today, valueEur: +value.toFixed(2),
+    note: 'T212:accountwaarde', _t212Id: 'val:' + today, // 1 per dag, idempotent
   };
 }
 
@@ -1064,36 +1077,45 @@ function App() {
   }, []); // eslint-disable-line
 
   const importT212 = React.useCallback(async () => {
-    const auth = buildT212Auth(tweaks.t212ApiKey);
-    if (!auth) return;
     setT212Status({ loading: true, error: null, imported: 0, done: false });
     try {
-      const data = await fetchT212Orders(auth, null, tweaks.t212Mode || 'live');
-      const items = Array.isArray(data) ? data : (data.items || []);
+      const { account, transactions = [], partial = false } =
+        await fetchT212Bundle(supabaseConfig, tweaks.t212Mode || 'live');
+
       const existingIds = new Set(state.transactions.filter(t => t._t212Id).map(t => t._t212Id));
-      const newTxs = items
-        .filter(o => {
-          if (existingIds.has(String(o.id || ''))) return false;
-          if (o.status && o.status !== 'FILLED') return false;
-          const qty = +(o.filledQuantity || o.orderedQuantity || 0);
-          const price = +(o.filledPrice || 0) || (qty > 0 ? (+(o.filledValue || 0) / qty) : 0);
-          return qty > 0 && price > 0;
-        })
-        .map(mapT212Order);
+
+      // Stortingen -> inleg, opnames -> opname (dedup op T212 reference, idempotent).
+      const depTxs = transactions
+        .map(mapT212Transaction)
+        .filter(tx => tx && !existingIds.has(tx._t212Id));
+
+      // Huidige accountwaarde -> waardering. ALTIJD meenemen (geen dedup-guard):
+      // de kept-filter hieronder vervangt de waardering-van-vandaag, zodat een
+      // her-import de waarde ververst i.p.v. de eerste meting te bevriezen.
+      const valTx = mapT212Valuation(account);
+      const newTxs = [...depTxs];
+      if (valTx) newTxs.push(valTx);
+
       if (newTxs.length > 0) {
         const now = new Date().toISOString();
         setSyncedState(s => {
           const stamped = newTxs.map(tx => ({ ...tx, updatedAt: now }));
           const deletedTransactionIds = { ...(s.deletedTransactionIds || {}) };
           stamped.forEach(tx => { delete deletedTransactionIds[tx.id]; });
-          return { ...s, transactions: [...s.transactions, ...stamped], deletedTransactionIds };
+          // Vervang een bestaande waardering-van-vandaag zodat er max. één per dag is.
+          const valIds = new Set(stamped.filter(t => t.type === 'waardering').map(t => t._t212Id));
+          const kept = s.transactions.filter(
+            t => !(t.party === 'trading212' && t.type === 'waardering' && valIds.has(t._t212Id))
+          );
+          return { ...s, transactions: [...kept, ...stamped], deletedTransactionIds };
         });
       }
-      setT212Status({ loading: false, error: null, imported: newTxs.length, done: true });
+      const note = partial ? ' (historie deels — draai nog eens voor de rest)' : '';
+      setT212Status({ loading: false, error: null, imported: depTxs.length, done: true, note });
     } catch (e) {
       setT212Status({ loading: false, error: e.message || 'Importfout', imported: 0, done: false });
     }
-  }, [tweaks.t212ApiKey, tweaks.t212Mode, state.transactions, setSyncedState]);
+  }, [supabaseConfig, tweaks.t212Mode, state.transactions, setSyncedState]);
 
   React.useEffect(() => {
     refreshSpot();
@@ -1558,7 +1580,6 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
     </label>
   );
 
-  const hasT212Auth = !!(tweaks.t212ApiKey || '').trim();
   const sbReady     = !!(supabaseConfig?.url && supabaseConfig?.anonKey);
 
   return (
@@ -1672,29 +1693,25 @@ function TweaksPanel({ tweaks, setTweaks, onReset, onClose,
                 </button>
               ))}
             </div>
-            <label style={{ fontSize:12 }}>
-              <div style={{ color:'var(--fg-muted)', marginBottom:4 }}>API Key <span style={{ color:'var(--fg-dim)' }}>(T212 → Instellingen → API)</span></div>
-              <input type="password" value={tweaks.t212ApiKey || ''}
-                onChange={e => setTweaks(tw => ({...tw, t212ApiKey: e.target.value}))}
-                placeholder="Plak je T212 API Key..."
-                style={{ ...inputStyle, width:'100%', padding:'7px 10px', fontSize:12, fontFamily:'var(--ff-mono)' }} />
-            </label>
-            <button onClick={onImportT212} disabled={!hasT212Auth || t212Status?.loading}
+            <button onClick={onImportT212} disabled={!sbReady || t212Status?.loading}
               style={{ padding:'8px 12px', fontSize:12, background:'var(--surface-2)',
                 border:'1px solid var(--border)', borderRadius:'var(--radius)',
-                cursor: hasT212Auth ? 'pointer' : 'default',
-                color: hasT212Auth ? 'var(--fg)' : 'var(--fg-dim)',
-                fontFamily:'inherit', opacity: hasT212Auth ? 1 : 0.5 }}>
-              {t212Status?.loading ? '…bezig' : '↓ Importeer transacties'}
+                cursor: sbReady ? 'pointer' : 'default',
+                color: sbReady ? 'var(--fg)' : 'var(--fg-dim)',
+                fontFamily:'inherit', opacity: sbReady ? 1 : 0.5 }}>
+              {t212Status?.loading ? '…bezig (kan even duren)' : '↓ Importeer stortingen + waarde'}
             </button>
             {(t212Status?.error || t212Status?.done) && (
               <div style={{ fontSize:10, fontFamily:'var(--ff-mono)',
                 color: t212Status.error ? 'var(--negative)' : 'var(--positive)' }}>
-                {t212Status.error ? '⚠ ' + t212Status.error : `✓ ${t212Status.imported} nieuwe transacties geïmporteerd`}
+                {t212Status.error ? '⚠ ' + t212Status.error
+                  : `✓ ${t212Status.imported} nieuwe storting(en) + waarde bijgewerkt${t212Status.note || ''}`}
               </div>
             )}
             <div style={{ fontSize:10, color:'var(--fg-dim)', lineHeight:1.5 }}>
-              Genereer een key via T212 → Instellingen → API. Duplicaten worden overgeslagen.
+              Importeert je stortingen, opnames en huidige accountwaarde via de beveiligde
+              Supabase-proxy. Je API-key staat veilig als secret in Supabase (niet hier).
+              Duplicaten worden overgeslagen.
             </div>
             <button onClick={onDeleteT212}
               style={{ padding:'7px 12px', fontSize:11, background:'transparent',
