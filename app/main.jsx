@@ -562,13 +562,34 @@ async function fetchT212Orders(authHeader, cursor, mode = 'live') {
   const base = cursor
     ? `https://${host}/api/v0/equity/history/orders?cursor=${encodeURIComponent(cursor)}&limit=50`
     : `https://${host}/api/v0/equity/history/orders?limit=50`;
-  let res;
-  try { res = await fetch(T212_PROXY + encodeURIComponent(base), { headers: { Authorization: authHeader } }); }
-  catch { throw new Error('Netwerkfout — controleer je verbinding'); }
-  if (res.status === 401) { const b = await res.text().catch(() => ''); throw new Error(`401 — ${b || 'ongeldige sleutel'}`); }
-  if (res.status === 403) throw new Error('Geen toegang (403) — sleutel heeft mogelijk onvoldoende rechten');
-  if (!res.ok) { const b = await res.text().catch(() => ''); throw new Error(`T212 HTTP ${res.status}: ${b || 'onbekend'}`); }
-  return res.json();
+
+  // Probeer meerdere CORS-proxies — corsproxy.io blokkeert T212 soms
+  const proxies = [
+    url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    url => `https://api.codetabs.com/v1/proxy/?quest=${url}`,
+    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    url => `https://corsproxy.org/?${encodeURIComponent(url)}`,
+  ];
+  const errors = [];
+  for (const wrap of proxies) {
+    let res;
+    try {
+      res = await fetch(wrap(base), { headers: { Authorization: authHeader } });
+    } catch (e) {
+      errors.push(`network: ${e.message || 'fetch failed'}`);
+      continue;
+    }
+    if (res.status === 401) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`401 — ${body || 'ongeldige sleutel'}`);
+    }
+    if (res.status === 403) throw new Error('Geen toegang (403) — sleutel heeft mogelijk onvoldoende rechten');
+    if (res.ok) return res.json();
+    // 5xx of CORS-proxy gaf 4xx terug die niet van T212 komt → volgende proxy
+    const body = await res.text().catch(() => '');
+    errors.push(`HTTP ${res.status}: ${(body || 'onbekend').slice(0, 120)}`);
+  }
+  throw new Error(`Alle proxies faalden — ${errors.join(' · ')}`);
 }
 
 function mapT212Order(order) {
