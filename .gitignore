@@ -12,5 +12,15 @@ Thumbs.db
 *.xls
 Finance Excel/
 
+# Persoonlijke exports / gegenereerde rapporten (horen niet in de repo)
+*.pdf
+Financieel_Dashboard_2026.html
+build_maandinfcnien.mjs
+outputs/
+
+# Build & dependencies
+node_modules/
+_site/
+
 # Claude Code intern
-.claude/launch.json
+.claude/

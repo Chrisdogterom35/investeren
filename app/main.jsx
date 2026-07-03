@@ -1382,23 +1382,7 @@ function App() {
               </>
             )}
             <span className="nav-theme-label" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--fg-dim)', fontFamily: 'var(--ff-mono)', marginRight: 4 }}>Thema</span>
-            <div className="nav-themes-row" style={{ display: 'contents' }}>
-              {THEMES.map(t => (
-                <button key={t.key} onClick={() => updateTweaks(tw => ({ ...tw, theme: t.key }))}
-                  title={t.label}
-                  style={{
-                    padding: '5px 10px', fontFamily: 'inherit', fontSize: 11,
-                    fontWeight: tweaks.theme === t.key ? 600 : 400,
-                    background: tweaks.theme === t.key ? 'var(--fg)' : 'transparent',
-                    color: tweaks.theme === t.key ? 'var(--bg)' : 'var(--fg-muted)',
-                    border: '1px solid ' + (tweaks.theme === t.key ? 'var(--fg)' : 'var(--border)'),
-                    borderRadius: 'var(--radius)', cursor: 'pointer', transition: 'all .15s', whiteSpace: 'nowrap',
-                  }}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-            <select className="nav-theme-select" value={tweaks.theme}
+            <select className="nav-theme-select" value={tweaks.theme} title="Thema kiezen"
               onChange={e => updateTweaks(tw => ({ ...tw, theme: e.target.value }))}>
               {THEMES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
             </select>

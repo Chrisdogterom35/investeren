@@ -1,0 +1,16 @@
+{
+  "name": "investeringen",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Persoonlijk financieel dashboard — statische site, JSX wordt bij deploy geprecompileerd",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/preset-env": "^7.29.0",
+    "@babel/preset-react": "^7.27.0",
+    "esbuild": "^0.25.0"
+  }
+}
