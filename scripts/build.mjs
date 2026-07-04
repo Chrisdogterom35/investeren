@@ -34,8 +34,11 @@ const OUT = path.join(ROOT, '_site');
 const EXCLUDE = new Set([
   '.git', '.github', '.claude', 'node_modules', '_site', 'outputs',
   'package.json', 'package-lock.json', 'scripts',
+  // niet nodig op de statische site (api/ draait als Vercel-function vanaf de repo-root)
+  'api', 'supabase', 'README.md', '.gitignore', 'vercel.json',
+  'Finance Excel', 'Financieel_Dashboard_2026.html', 'build_maandinfcnien.mjs',
 ]);
-const EXCLUDE_EXT = new Set(['.pdf', '.xlsx', '.xlsm', '.xls', '.tmp']);
+const EXCLUDE_EXT = new Set(['.pdf', '.xlsx', '.xlsm', '.xls', '.tmp', '.sql']);
 
 const REACT_SWAPS = [
   {
